@@ -99,11 +99,16 @@ async function generateBatch(
         },
       }),
     };
-    const response = await fetch(url, options).catch((error: unknown) => {
+    let initial = await fetch(url, options).catch((error: unknown) => {
       if (signal.aborted) throw error;
-      // A transient connection failure gets one retry within the same deadline.
-      return fetch(url, options);
+      return null;
     });
+    // A network failure or transient provider outage gets one retry within the same deadline.
+    if (initial && [502, 503, 504].includes(initial.status)) {
+      void initial.body?.cancel().catch(() => {});
+      initial = null;
+    }
+    const response = initial ?? await fetch(url, options);
 
     if (!response.ok) {
       void response.body?.cancel().catch(() => {});

@@ -95,6 +95,17 @@ test("retries a transient transport failure once", async () => {
   assert.equal(attempts, 2);
 });
 
+test("retries a temporary HTTP outage without increasing the batch allowance", async () => {
+  let attempts = 0;
+  globalThis.fetch = async () => ++attempts === 1
+    ? new Response(null, { status: 503 })
+    : modelResponse({ title: "Plants", flashcards: [mockCard] });
+  const input = generationSchema.parse({ topic: "Photosynthesis", count: 1 });
+  const result = await generateDeck(input, key, defaultModel, new AbortController().signal);
+  assert.equal(result.flashcards.length, 1);
+  assert.equal(attempts, 2);
+});
+
 test("handles interruption without returning provider details", async () => {
   const controller = new AbortController();
   controller.abort();

@@ -1,6 +1,7 @@
 "use client";
 
 import { BookOpen, ChevronDown, FileText, Image as ImageIcon, Info, Layers, LoaderCircle, Paperclip, TriangleAlert, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import {
   acceptedFileTypes, attachmentKind, cardCounts, difficultyDescriptions, difficultyLabels,
@@ -9,6 +10,7 @@ import {
 } from "../lib/flashcards";
 import { previewKey, previewSchema, storedJson, useStoredText, useStudyPreferences, writeStoredText } from "../lib/browser-settings";
 import { useDeckScope } from "../lib/use-deck-library";
+import { useCloudAccount } from "../lib/cloud-account";
 import { SaveDeck } from "./components/save-deck";
 import { DeckView } from "./deck-view";
 
@@ -72,6 +74,7 @@ export function Workspace({ hosted = false }: { hosted?: boolean }) {
 }
 
 function CreationWorkspace({ scope, hosted }: { scope: ReturnType<typeof useDeckScope>; hosted: boolean }) {
+  const { user, ready } = useCloudAccount();
   const preferences = useStudyPreferences(scope);
   const key = previewKey(scope);
   const result = storedJson(useStoredText(key), previewSchema);
@@ -135,6 +138,10 @@ function CreationWorkspace({ scope, hosted }: { scope: ReturnType<typeof useDeck
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (currentRequest.current) return;
+    if (hosted && !user) {
+      setError("Sign in to generate a deck.");
+      return;
+    }
     if (hosted && !eligible) {
       setError("Confirm your eligibility before generating cards.");
       return;
@@ -328,7 +335,7 @@ function CreationWorkspace({ scope, hosted }: { scope: ReturnType<typeof useDeck
               </div>
             )}
           </fieldset>
-          {hosted && <label className="deck-eligibility"><input type="checkbox" checked={eligible} onChange={(event) => {
+          {hosted && user && <label className="deck-eligibility"><input type="checkbox" checked={eligible} onChange={(event) => {
             setEligible(event.target.checked); setError("");
           }} /> I am 18 or older and using CardGeniusAI for professional learning or training in the U.S. or Canada.</label>}
           {error && <p className="form-error" role="alert"><TriangleAlert size={17} aria-hidden="true" /> {error}</p>}
@@ -341,6 +348,8 @@ function CreationWorkspace({ scope, hosted }: { scope: ReturnType<typeof useDeck
               </div>
               <button type="button" className="secondary-button" onClick={() => currentRequest.current?.abort()}>Cancel</button>
             </div>
+          ) : hosted && !user ? (
+            ready ? <Link className="primary-button generate" href="/sign-in"><Layers size={18} aria-hidden="true" /> Sign in to generate</Link> : <p role="status">Checking your session…</p>
           ) : (
             <button className="primary-button generate" type="submit"><Layers size={18} aria-hidden="true" /> Generate flashcards</button>
           )}
