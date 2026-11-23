@@ -2,6 +2,8 @@
 
 CardGeniusAI turns study material into flashcards you can organize, review, and export. Sign in to sync decks, folders, study progress, and preferences across devices.
 
+[Open CardGeniusAI](https://cardgenius-ai-nu.vercel.app)
+
 ![CardGeniusAI deck creation workspace](docs/workspace.png)
 
 ## Features
