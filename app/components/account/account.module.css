@@ -5,12 +5,11 @@
   margin: clamp(24px, 4.5vw, 56px) auto 0;
 }
 
-.accessLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, .85fr);
-  align-items: start;
-  gap: 18px;
-  max-width: 850px;
+.accessLayout { max-width: 500px; }
+
+.authPanel {
+  --auth-control-height: 48px;
+  --auth-control-radius: 10px;
 }
 
 .accountLayout,
@@ -68,10 +67,10 @@
 
 .field input {
   width: 100%;
-  min-height: 44px;
+  min-height: var(--auth-control-height);
   padding: 9px 12px;
   border: 1px solid var(--field-border);
-  border-radius: 9px;
+  border-radius: var(--auth-control-radius);
   background: var(--field);
   color: var(--ink);
   font: inherit;
@@ -79,15 +78,16 @@
 
 .field input::placeholder { color: var(--muted); opacity: 1; }
 .passwordField { position: relative; }
-.passwordField input { padding-inline-end: 52px; }
+.passwordField input { padding-inline-end: 56px; }
+.passwordField input::-ms-reveal { display: none; }
 
 .visibilityButton {
   position: absolute;
   inset-block-start: 50%;
-  inset-inline-end: 3px;
+  inset-inline-end: 2px;
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   transform: translateY(-50%);
   border: 0;
@@ -102,31 +102,32 @@
 .fieldLabel a, .helpText { font-size: .8125rem; }
 .helpText { color: var(--muted); }
 
-.googleGroup {
-  margin-top: 14px;
-  text-align: center;
+.authPanel .authButton {
+  width: 100%;
+  min-height: var(--auth-control-height);
+  border-radius: var(--auth-control-radius);
 }
+
+.googleGroup { display: grid; gap: 14px; margin-top: 16px; }
+.authDivider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .8125rem; }
+.authDivider::before, .authDivider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 
 .googleButton {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  min-height: 44px;
   padding: 8px 12px;
   border: 1px solid #747775;
-  border-radius: 9px;
   background: #fff;
   color: #1f1f1f;
   font: 500 .875rem/1.43 "Google Sans", Arial, sans-serif;
 }
 
-.googleButton:hover { background: #f4f5f7; }
+.googleButton:hover:not(:disabled) { background: #f4f5f7; }
 .googleButton img { object-fit: contain; }
-:global([data-theme="dark"]) .googleButton { border-color: #8e918f; background: #131314; color: #e3e3e3; }
-:global([data-theme="dark"]) .googleButton:hover { background: #252527; }
-.googleGroup p { margin-top: 6px; }
+:global(:is([data-theme="dark"], [data-theme="oled"])) .googleButton { border-color: #8e918f; background: #131314; color: #e3e3e3; }
+:global(:is([data-theme="dark"], [data-theme="oled"])) .googleButton:hover:not(:disabled) { background: #252527; }
 
 .feedback {
   margin-top: 14px;
@@ -206,10 +207,6 @@
 .policyBody section + section { border-top: 1px solid var(--border); padding-top: 21px; }
 .policyBody ul { margin-top: 10px; padding-inline-start: 20px; color: var(--muted); }
 .policyBody li + li { margin-top: 5px; }
-
-@media (max-width: 680px) {
-  .accessLayout { grid-template-columns: minmax(0, 1fr); }
-}
 
 @media (max-width: 480px) {
   .settingsPanel { grid-template-columns: auto minmax(0, 1fr); }

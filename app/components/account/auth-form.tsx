@@ -23,7 +23,7 @@ export function AuthForm({ mode, expired = false }: { mode: keyof typeof copies;
   const [error, setError] = useState("");
   const [heading, description, action] = copies[mode];
   const newPassword = mode === "sign-up" || mode === "change";
-  const google = process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN === "true";
+  const showGoogle = (mode === "sign-in" || mode === "sign-up") && process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN === "true";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,26 +96,28 @@ export function AuthForm({ mode, expired = false }: { mode: keyof typeof copies;
               {mode === "sign-in" && <Link className={styles.inlineLink} href="/forgot-password">Forgot password?</Link>}
             </div>
             <div className={styles.passwordField}>
-              <input id="auth-password" name="password" type={show ? "text" : "password"} autoComplete={newPassword ? "new-password" : "current-password"} minLength={newPassword ? 10 : undefined} maxLength={128} required />
-              <button type="button" aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}>
+              <input id="auth-password" name="password" type={show ? "text" : "password"} autoComplete={newPassword ? "new-password" : "current-password"} aria-describedby={newPassword ? "auth-password-help" : undefined} minLength={newPassword ? 10 : undefined} maxLength={128} required />
+              <button type="button" className={styles.visibilityButton} aria-controls={mode === "change" ? "auth-password auth-confirm" : "auth-password"} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow((visible) => !visible)}>
                 {show ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
               </button>
             </div>
-            {newPassword && <p>Use at least 10 characters.</p>}
+            {newPassword && <p id="auth-password-help" className={styles.helpText}>Use at least 10 characters.</p>}
           </div>}
           {mode === "change" && <div className={styles.field}><label htmlFor="auth-confirm">Confirm password</label>
             <input id="auth-confirm" name="confirm" type={show ? "text" : "password"} autoComplete="new-password" minLength={10} maxLength={128} required />
           </div>}
           {error && <p role="alert" className="form-error">{error}</p>}
           {notice && <p role="status">{notice}</p>}
-          <button type="submit" className="primary-button" disabled={!authConfigured || pending}>{pending ? "Working…" : action}</button>
+          <button type="submit" className={`primary-button ${styles.authButton}`} disabled={!authConfigured || pending}>{pending ? "Working…" : action}</button>
         </form>
-        {(mode === "sign-in" || mode === "sign-up") && (
-          <button type="button" className={`secondary-button ${styles.googleButton}`} disabled={!authConfigured || !google || pending} onClick={continueWithGoogle}>
-            <Image src="/google-g.png" alt="" width={18} height={18} /> Continue with Google
-          </button>
+        {showGoogle && (
+          <div className={styles.googleGroup}>
+            <div className={styles.authDivider} aria-hidden="true">or</div>
+            <button type="button" className={`${styles.authButton} ${styles.googleButton}`} disabled={!authConfigured || pending} onClick={continueWithGoogle}>
+              <Image src="/google-g.png" alt="" width={18} height={18} /> Continue with Google
+            </button>
+          </div>
         )}
-        {(mode === "sign-in" || mode === "sign-up") && !google && <p className={styles.inlineLink}>Google sign-in will be available after the provider is configured.</p>}
         <p className={styles.switchLink}>{mode === "sign-in" ? <Link href="/sign-up">Create an account</Link> : <Link href="/sign-in">Back to sign in</Link>}</p>
       </section>
     </div>

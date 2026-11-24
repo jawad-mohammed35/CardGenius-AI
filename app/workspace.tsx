@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, ChevronDown, FileText, Image as ImageIcon, Info, Layers, LoaderCircle, Paperclip, TriangleAlert, X } from "lucide-react";
+import { BookOpen, ChevronDown, FileText, Image as ImageIcon, Info, Layers, LoaderCircle, Paperclip, TriangleAlert, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import {
@@ -349,7 +349,7 @@ function CreationWorkspace({ scope, hosted }: { scope: ReturnType<typeof useDeck
               <button type="button" className="secondary-button" onClick={() => currentRequest.current?.abort()}>Cancel</button>
             </div>
           ) : hosted && !user ? (
-            ready ? <Link className="primary-button generate" href="/sign-in"><Layers size={18} aria-hidden="true" /> Sign in to generate</Link> : <p role="status">Checking your session…</p>
+            ready ? <Link className="primary-button generate" href="/sign-in"><UserRound size={18} aria-hidden="true" /> Sign in to generate</Link> : <p role="status">Checking your session…</p>
           ) : (
             <button className="primary-button generate" type="submit"><Layers size={18} aria-hidden="true" /> Generate flashcards</button>
           )}
