@@ -1,16 +1,16 @@
 "use client";
 
-import { Check, Monitor, Moon, Sun, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { Check, Moon, MoonStar, Sun } from "lucide-react";
+import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { useCloudAccount } from "../lib/cloud-account";
-import { accentKey, accents, themeKey, themes, type Theme } from "../lib/appearance";
+import { accentKey, accents, themeKey, themes, type Accent, type Theme } from "../lib/appearance";
 
 const changeEvent = "cardgenius-appearance";
 let transitionFrame = 0;
 const themeOptions = [
   { id: "light", label: "Light", icon: Sun },
   { id: "dark", label: "Dark", icon: Moon },
-  { id: "oled", label: "OLED Black", icon: Monitor },
+  { id: "oled", label: "Midnight", icon: MoonStar },
 ] as const;
 
 function applyPreference(key: "theme" | "accent", value: string) {
@@ -45,7 +45,8 @@ function getSnapshot() {
 }
 
 function useAppearance() {
-  return useSyncExternalStore(subscribe, getSnapshot, () => "light:monochrome").split(":");
+  const [theme, accent] = useSyncExternalStore(subscribe, getSnapshot, () => "light:monochrome").split(":");
+  return { theme: themes.find((value) => value === theme) ?? "light", accent: accents.find(({ id }) => id === accent)?.id ?? "monochrome" };
 }
 
 function setPreference(key: "theme" | "accent", value: string) {
@@ -56,9 +57,42 @@ function setPreference(key: "theme" | "accent", value: string) {
   window.dispatchEvent(new Event(changeEvent));
 }
 
-export function AppearanceFields() {
+export function AppearanceChoices({ theme, accent, disabled, onTheme, onAccent }: {
+  theme: Theme; accent: Accent; disabled?: boolean; onTheme: (theme: Theme) => void; onAccent: (accent: Accent) => void;
+}) {
   const group = useId();
-  const [theme, accent] = useAppearance();
+  return (
+    <div className="appearance-fields">
+      <fieldset disabled={disabled}>
+        <legend>Theme</legend>
+        <div className="theme-options">
+          {themeOptions.map(({ id, label, icon: Icon }) => (
+            <label key={id}>
+              <input type="radio" name={group + "-theme"} value={id} checked={theme === id} onChange={() => onTheme(id)} />
+              <Icon size={16} aria-hidden="true" /> {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset disabled={disabled}>
+        <legend>Accent color</legend>
+        <div className="accent-options">
+          {accents.map(({ id, label, light, dark }) => (
+            <label key={id} title={label}>
+              <input type="radio" name={group + "-accent"} value={id} aria-label={label} checked={accent === id} onChange={() => onAccent(id)} />
+              <span className="accent-swatch" style={{ backgroundColor: theme === "oled" && id === "monochrome" ? "#fff" : theme === "light" ? light : dark }}>
+                {accent === id && <Check size={16} aria-hidden="true" />}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
+export function AppearanceFields() {
+  const { theme, accent } = useAppearance();
   const { user, saveProfile } = useCloudAccount();
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState("");
@@ -71,40 +105,17 @@ export function AppearanceFields() {
     finally { setPending(false); }
   }
   return (
-    <div className="appearance-fields">
-      <fieldset disabled={pending}>
-        <legend>Theme</legend>
-        <div className="theme-options">
-          {themeOptions.map(({ id, label, icon: Icon }) => (
-            <label key={id}>
-              <input type="radio" name={group + "-theme"} value={id} checked={theme === id} onChange={() => void choose("theme", id)} />
-              <Icon size={16} aria-hidden="true" /> {label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <fieldset disabled={pending}>
-        <legend>Accent color</legend>
-        <div className="accent-options">
-          {accents.map(({ id, label, light, dark }) => (
-            <label key={id}>
-              <input type="radio" name={group + "-accent"} value={id} checked={accent === id} onChange={() => void choose("accent", id)} />
-              <span className="accent-swatch" style={{ backgroundColor: theme === "oled" && id === "monochrome" ? "#fff" : theme === "light" ? light : dark }}>
-                {accent === id && <Check size={17} aria-hidden="true" />}
-              </span>
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+    <>
+      <AppearanceChoices theme={theme} accent={accent} disabled={pending}
+        onTheme={(value) => void choose("theme", value)} onAccent={(value) => void choose("accent", value)} />
       {failure && <p role="alert">{failure}</p>}
-    </div>
+    </>
   );
 }
 
 export function AppearanceControl() {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [theme] = useAppearance();
+  const id = useId();
+  const { theme } = useAppearance();
   const { user, profile, profileReady, ready } = useCloudAccount();
   useEffect(() => {
     if (!ready || !profileReady) return;
@@ -118,24 +129,16 @@ export function AppearanceControl() {
     applyPreference("accent", accents.find(({ id }) => id === selectedAccent)?.id ?? "monochrome");
     window.dispatchEvent(new Event(changeEvent));
   }, [user?.id, ready, profileReady, profile?.theme, profile?.accent]);
-  const Icon = themeOptions.find(({ id }) => id === theme as Theme)?.icon ?? Sun;
+  const Icon = themeOptions.find(({ id }) => id === theme)?.icon ?? Sun;
   return (
     <div className="appearance-control">
-      <button type="button" className="appearance-trigger" aria-label="Appearance settings" title="Appearance settings" aria-haspopup="dialog" onClick={() => dialog.current?.showModal()}>
+      <button type="button" className="appearance-trigger" aria-label="Appearance settings" title="Appearance settings" aria-haspopup="dialog" popoverTarget={id}>
         <Icon size={19} aria-hidden="true" />
       </button>
-      <dialog ref={dialog} className="appearance-dialog" aria-labelledby="appearance-title"
-        onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}>
-        <div className="appearance-content">
-          <header>
-            <h2 id="appearance-title">Appearance</h2>
-            <button type="button" className="icon-button" aria-label="Close appearance" onClick={() => dialog.current?.close()}>
-              <X size={18} aria-hidden="true" />
-            </button>
-          </header>
-          <AppearanceFields />
-        </div>
-      </dialog>
+      <div id={id} popover="auto" role="dialog" className="appearance-popover" aria-labelledby={id + "-title"}>
+        <h2 id={id + "-title"}>Appearance</h2>
+        <AppearanceFields />
+      </div>
     </div>
   );
 }

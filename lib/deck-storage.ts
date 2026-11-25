@@ -81,7 +81,7 @@ async function storeCloudDeck(scope: `cloud:${string}`, deck: Deck, options: Sav
 }
 
 export async function saveNewDeck(scope: DeckScope, deck: Deck, options: SaveOptions) {
-  if (!isCloudScope(scope)) return local.saveNewDeck(scope, deck, options);
+  if (!isCloudScope(scope)) return local.saveNewDeck(scope, deck, { ...options, folderId: null });
   const id = await storeCloudDeck(scope, deck, options);
   if (!id) throw new Error("The deck couldn’t be saved.");
   local.emitChange(scope);
@@ -127,8 +127,12 @@ export async function duplicateDeck(scope: DeckScope, id: string) {
   return saveNewDeck(scope, { title: deck.title.slice(0, 93) + " (copy)", flashcards: deck.flashcards }, { subject: deck.subject, folderId: deck.folderId });
 }
 
+function requireFolderAccount(scope: DeckScope): asserts scope is `cloud:${string}` {
+  if (!isCloudScope(scope)) throw new Error("Sign in to manage folders.");
+}
+
 export async function saveFolder(scope: DeckScope, name: string, id?: string): Promise<DeckFolder> {
-  if (!isCloudScope(scope)) return local.saveFolder(scope, name, id);
+  requireFolderAccount(scope);
   const table = browserSupabase().from("folders");
   const fields = { name: name.trim() };
   const row = requireResult(await (id ? table.update(fields).eq("owner_id", owner(scope)).eq("id", id)
@@ -138,8 +142,8 @@ export async function saveFolder(scope: DeckScope, name: string, id?: string): P
 }
 
 export async function deleteFolder(scope: DeckScope, id: string) {
-  if (!isCloudScope(scope)) return local.deleteFolder(scope, id);
-  requireResult(await browserSupabase().from("folders").delete().eq("owner_id", owner(scope)).eq("id", id));
+  requireFolderAccount(scope);
+  requireResult(await browserSupabase().from("folders").delete().eq("owner_id", owner(scope)).eq("id", id).select("id").single());
   local.emitChange(scope);
 }
 
@@ -164,7 +168,7 @@ async function importFolders(scope: `cloud:${string}`, names: Iterable<string>) 
 }
 
 export async function importLibrary(scope: DeckScope, contents: string) {
-  if (!isCloudScope(scope)) return local.importLibrary(scope, contents);
+  requireFolderAccount(scope);
   const decks = local.readBackup(contents);
   const folders = await importFolders(scope, decks.flatMap((deck) => deck.folder ?? []));
   for (const deck of decks) await storeCloudDeck(scope, deck, { subject: deck.subject, folderId: folders.get(deck.folder?.toLowerCase() ?? "") ?? null });
@@ -193,7 +197,7 @@ export async function migrateLocalDecks(scope: `cloud:${string}`) {
 }
 
 export async function clearLibrary(scope: DeckScope) {
-  if (!isCloudScope(scope)) return local.clearLibrary(scope);
+  requireFolderAccount(scope);
   requireResult(await browserSupabase().from("decks").delete().eq("owner_id", owner(scope)));
   requireResult(await browserSupabase().from("folders").delete().eq("owner_id", owner(scope)));
   local.emitChange(scope);

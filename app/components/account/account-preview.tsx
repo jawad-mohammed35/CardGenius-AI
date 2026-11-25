@@ -13,6 +13,7 @@ import { useDeckLibrary } from "../../../lib/use-deck-library";
 import { AppearanceFields } from "../../appearance-control";
 import { DeckDialog } from "../deck-dialog";
 import { StudyShortcuts } from "../study-shortcuts";
+import { PasswordChangeForm } from "./password-change-form";
 import { ProfileAvatar } from "./profile-avatar";
 import styles from "./account.module.css";
 
@@ -282,7 +283,6 @@ function SecuritySettings() {
   const { user } = useCloudAccount();
   const [deleting, setDeleting] = useState(false);
   const [pending, setPending] = useState(false);
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const hasPassword = user?.identities?.some((identity) => identity.provider === "email") ?? false;
 
@@ -315,28 +315,8 @@ function SecuritySettings() {
 
   return <div className={styles.settingsStack}>
     <p>{user?.email} · {hasPassword ? "Email account" : "Google account"}</p>
-    {hasPassword && <form className={styles.settingsStack} onSubmit={async (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const data = new FormData(form);
-      const password = String(data.get("new") ?? "");
-      const current = String(data.get("current") ?? "");
-      setNotice(""); setError("");
-      if (new TextEncoder().encode(password).length > 72) { setError("Use a password up to 72 bytes."); return; }
-      setPending(true);
-      try {
-        const result = await browserSupabase().auth.updateUser({ password, current_password: current });
-        if (result.error) throw result.error;
-        form.reset(); setNotice("Password updated.");
-      } catch { setError("Couldn’t update your password. Check the current password."); }
-      finally { setPending(false); }
-    }}>
-      <label className={styles.settingsField}>Current password<input name="current" type="password" autoComplete="current-password" required /></label>
-      <label className={styles.settingsField}>New password<input name="new" type="password" autoComplete="new-password" minLength={10} required /></label>
-      <div><button type="submit" className="secondary-button" disabled={pending}>Change password</button></div>
-    </form>}
+    {hasPassword && user && <PasswordChangeForm key={user.id} userId={user.id} disabled={pending} />}
     {!deleting && error && <p role="alert" className="form-error">{error}</p>}
-    <p role="status">{notice}</p>
     <div className={styles.actions}><button type="button" className="secondary-button" disabled={pending} onClick={signOut}>Sign out</button>
       <Link className="secondary-button" href="/privacy">Privacy Policy</Link></div>
     <button type="button" className={styles.clearData} disabled={pending} onClick={() => { setError(""); setDeleting(true); }}>Delete account</button>

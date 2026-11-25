@@ -22,7 +22,13 @@ type DeckViewProps = {
 };
 
 export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProps) {
-  const preferences = useStudyPreferences(useDeckScope());
+  const { advance, animate } = useStudyPreferences(useDeckScope());
+  return <FlashcardStudy deck={deck} initialSession={initialSession} onSessionChange={onSessionChange}
+    advance={advance} animate={animate} />;
+}
+
+export function FlashcardStudy({ deck, initialSession, onSessionChange, advance = false, animate = true, exportEnabled = true }:
+  DeckViewProps & { advance?: boolean; animate?: boolean; exportEnabled?: boolean }) {
   const [view, setView] = useState<"study" | "list">("study");
   const [revealed, setRevealed] = useState(false);
   const [session, setSession] = useState(() => initialSession ?? createStudySession(deck.flashcards.length));
@@ -85,7 +91,7 @@ export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProp
     const studyActions: Record<string, () => void> = {
       arrowleft: () => move(-1), arrowright: () => move(1), " ": flipCard,
       arrowup: () => changeRating("known"), arrowdown: () => changeRating("review"),
-      c: () => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard."),
+      ...(exportEnabled ? { c: () => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard.") } : {}),
     };
     const shortcuts: Record<string, () => void> = {
       f: toggleFullscreen, s: shuffle, r: () => setConfirmRestart(true),
@@ -105,7 +111,7 @@ export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProp
     const next = rateCard(session, rating);
     const selected = next.ratings[index];
     setNotice(selected ? (selected === "known" ? "Marked known." : "Marked for review.") : "Rating cleared.");
-    if (preferences.advance && selected && !next.complete && position < count - 1) {
+    if (advance && selected && !next.complete && position < count - 1) {
       next.position++;
       setRevealed(false);
     }
@@ -159,7 +165,7 @@ export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProp
   }
 
   const content = (
-    <div className={`deck-content ${preferences.animate ? "" : styles.noMotion}`} role="region"
+    <div className={`deck-content ${animate ? "" : styles.noMotion}`} role="region"
       aria-label="Flashcard study" tabIndex={0} onKeyDown={handleStudyKey}>
       <div className="deck-toolbar">
         <div className="view-switch" role="group" aria-label="Deck view">
@@ -171,14 +177,14 @@ export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProp
           </button>
         </div>
         <div className={styles.tools} role="group" aria-label="Study tools">
-          <StudyShortcuts iconOnly />
+          <StudyShortcuts iconOnly exportEnabled={exportEnabled} />
           {!fullscreen && <button ref={enterButton} className="icon-button" type="button" aria-label="Enter Fullscreen" title="Enter Fullscreen" onClick={toggleFullscreen}>
             <Maximize size={17} aria-hidden="true" />
           </button>}
-          {!fullscreen && <button className="icon-button" type="button" aria-label="Copy deck" title="Copy deck" onClick={copyDeck}>
+          {!fullscreen && exportEnabled && <button className="icon-button" type="button" aria-label="Copy deck" title="Copy deck" onClick={copyDeck}>
             <Clipboard size={17} aria-hidden="true" />
           </button>}
-          {!fullscreen && <button className="icon-button" type="button" aria-label="Download CSV" title="Download CSV" onClick={downloadDeck}>
+          {!fullscreen && exportEnabled && <button className="icon-button" type="button" aria-label="Download CSV" title="Download CSV" onClick={downloadDeck}>
             <Download size={18} aria-hidden="true" />
           </button>}
         </div>
@@ -204,7 +210,7 @@ export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProp
               className={`flashcard${revealed ? " flashcard-revealed" : ""}`}
               type="button"
               onClick={flipCard}
-              aria-keyshortcuts="Space ArrowLeft ArrowRight ArrowUp ArrowDown C F S R"
+              aria-keyshortcuts={`Space ArrowLeft ArrowRight ArrowUp ArrowDown${exportEnabled ? " C" : ""} F S R`}
               aria-label={revealed ? "Show question" : "Reveal answer"}
               aria-describedby={cardContentId}
             >
@@ -229,10 +235,10 @@ export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProp
                 <button className="icon-button" type="button" aria-label="Shuffle cards" title="Shuffle cards" onClick={shuffle} disabled={count < 2}>
                   <Shuffle size={16} aria-hidden="true" />
                 </button>
-                <button className="icon-button" type="button" aria-label="Copy current flashcard" title="Copy current flashcard"
+                {exportEnabled && <button className="icon-button" type="button" aria-label="Copy current flashcard" title="Copy current flashcard"
                   onClick={() => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard.")}>
                   <Copy size={16} aria-hidden="true" />
-                </button>
+                </button>}
               </div>
               <div role="group" aria-label="Rate this card" className={styles.ratings}>
                 <button type="button" className={`secondary-button ${styles.reviewButton}`} aria-pressed={ratings[index] === "review"} onClick={() => changeRating("review")}>

@@ -1,0 +1,73 @@
+.demo { width: min(100%, 880px); margin: 0 auto; padding-top: 12px; }
+.header { display: flex; justify-content: space-between; align-items: start; gap: 15px; margin-bottom: 23px; }
+.header h1 { font-size: clamp(1.9rem, 4.3vw, 2.65rem); letter-spacing: -.055em; line-height: 1.15; }
+.header p { color: var(--muted); margin-top: 7px; }
+.header > a { flex: none; }
+.steps { display: flex; gap: 7px; margin: 0 0 12px; padding: 0; list-style: none; }
+.steps li {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 2px;
+  border-top: 2px solid var(--border);
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 630;
+  text-align: center;
+}
+.steps li[data-finished] { border-color: var(--card-outline); }
+.steps li[aria-current="step"] { color: var(--accent-text); border-color: var(--accent-text); }
+.stage { padding: clamp(17px, 3vw, 27px); }
+.stage h2 { font-size: clamp(1.3rem, 3vw, 1.65rem); letter-spacing: -.035em; }
+.stage h2:focus { outline: none; }
+.stage p { color: var(--muted); }
+.stageStack { display: grid; gap: 15px; }
+.creation, .library, .personalize { display: grid; gap: 14px; align-items: start; }
+.creation { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.library, .personalize { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stack, .options { display: grid; min-width: 0; gap: 11px; align-content: start; }
+.options { padding: 14px; background: var(--bg); color: var(--ink); border: 1px solid var(--border); border-radius: 13px; }
+.options h3, .files legend { display: flex; align-items: center; gap: 7px; margin: 0; font-size: .9rem; font-weight: 680; }
+.options p { font-size: .84rem; }
+.options button, .stack button { justify-self: start; }
+.field { display: grid; gap: 5px; font-size: .86rem; font-weight: 630; }
+.field :is(input, select, textarea) {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--field-border);
+  border-radius: 8px;
+  background: var(--field);
+  color: var(--ink);
+  font-weight: 450;
+}
+.field textarea { resize: vertical; }
+.files { display: grid; gap: 6px; }
+.files legend { margin-bottom: 6px; }
+.file {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: .81rem;
+  cursor: pointer;
+}
+.file:has(input:checked) { color: var(--accent-text); background: var(--accent-soft); border-color: var(--card-outline); }
+.file small { color: var(--muted); }
+.file input, .preference input { accent-color: var(--accent-fill); margin: 0; }
+.preference, .accentPreview { display: flex; align-items: center; gap: 8px; font-size: .84rem; }
+.options .accentPreview { color: var(--accent-text); }
+.navigation { display: flex; align-items: center; justify-content: end; gap: 13px; margin-top: 15px; }
+.navigation > button:first-child:not(:only-child) { margin-inline-end: auto; }
+.finish { display: grid; justify-items: center; gap: 13px; text-align: center; padding: clamp(14px, 4vw, 42px) 0; }
+.finish p { max-width: 48ch; }
+.finishIcon { display: grid; width: 49px; height: 49px; place-items: center; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); }
+@media (max-width: 620px) {
+  .creation, .library, .personalize { grid-template-columns: 1fr; }
+  .header { flex-wrap: wrap; gap: 9px; }
+  .steps { gap: 4px; }
+  .steps li { font-size: .69rem; }
+}

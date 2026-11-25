@@ -6,7 +6,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { DeckDialog } from "../components/deck-dialog";
 import fields from "../components/deck-dialog.module.css";
 import {
-  deckNameLimit, deleteDeck, deleteFolder, duplicateDeck, folderNameLimit, saveFolder, subjectLimit, updateDeckDetails,
+  deckNameLimit, deleteDeck, deleteFolder, duplicateDeck, folderNameLimit, isCloudScope, saveFolder, subjectLimit, updateDeckDetails,
   type DeckFolder, type DeckScope, type StoredDeck,
 } from "../../lib/deck-storage";
 import { difficultyLabels } from "../../lib/flashcards";
@@ -43,6 +43,7 @@ export function StudyLibrary() {
 
 function LibraryContents({ scope }: { scope: DeckScope }) {
   const { data, failed } = useDeckLibrary(scope);
+  const canManageFolders = isCloudScope(scope);
   const [folderFilter, setFolderFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState("all");
@@ -105,11 +106,15 @@ function LibraryContents({ scope }: { scope: DeckScope }) {
         <aside className={`panel ${styles.sidebar}`} aria-labelledby="folders-heading">
           <div className={styles.sidebarHeader}>
             <h2 id="folders-heading">Folders</h2>
-            <button type="button" className="icon-button" aria-label="New folder" title="New folder"
+            {canManageFolders && <button type="button" className="icon-button" aria-label="New folder" title="New folder"
               onClick={() => { setNotice(""); setDialog({ type: "newFolder" }); }} disabled={failed || !data}>
               <FolderPlus size={17} aria-hidden="true" />
-            </button>
+            </button>}
           </div>
+          {!canManageFolders && <div className={styles.folderSignIn}>
+            <p>Sign in to create folders and organize your study decks.</p>
+            <Link href="/sign-in?next=/study-decks" className="secondary-button">Sign in</Link>
+          </div>}
           <div className={styles.folderList} aria-label="Filter by folder" role="group">
             <FolderButton label="All decks" active={selected === "all"} total={decks.length} onClick={() => setFolderFilter("all")} all />
             <FolderButton label="Unfiled" active={selected === "unfiled"} total={folderCounts.get(null) ?? 0}
@@ -122,7 +127,7 @@ function LibraryContents({ scope }: { scope: DeckScope }) {
         <div className={styles.collection}>
           <div className={styles.collectionHeader}>
             <h2>{chosenFolder?.name ?? (selected === "unfiled" ? "Unfiled" : "All decks")}</h2>
-            {chosenFolder && <div className={styles.quickControls}>
+            {canManageFolders && chosenFolder && <div className={styles.quickControls}>
               <button type="button" className="icon-button" aria-label="Rename folder" title="Rename folder"
                 onClick={() => { setNotice(""); setDialog({ type: "renameFolder", folder: chosenFolder }); }}><Pencil size={15} aria-hidden="true" /></button>
               <button type="button" className="icon-button" aria-label="Delete folder" title="Delete folder"
@@ -312,12 +317,12 @@ function LibraryDialog({ action, folders, scope, onClose, onSuccess }: {
             <label className={fields.field}><span>Subject (optional)</span>
               <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={subjectLimit} placeholder="e.g. Biology" />
             </label>
-            <label className={fields.field}><span>Folder</span>
+            {isCloudScope(scope) && <label className={fields.field}><span>Folder</span>
               <select aria-label="Folder" value={folderId} onChange={(event) => setFolderId(event.target.value)}>
                 <option value="">Unfiled</option>
                 {folders.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
               </select>
-            </label>
+            </label>}
           </>}
         </>
       )}

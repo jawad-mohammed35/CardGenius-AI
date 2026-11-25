@@ -18,6 +18,8 @@
 .sidebarHeader h2 { font-size: 1rem; font-weight: 710; }
 .sidebarHeader button { min-height: 34px; width: 34px; }
 .folderList { display: grid; gap: 3px; }
+.folderSignIn { display: grid; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: .8rem; }
+.folderSignIn a { justify-self: start; }
 .folderButton {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

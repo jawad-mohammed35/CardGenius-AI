@@ -14,7 +14,8 @@ CardGeniusAI turns study material into flashcards you can organize, review, and 
 - Choose from four difficulty levels and request 1–100 cards. Large decks run in batches and report progress. Short sources may produce fewer cards.
 - Save, name, organize, search, edit, duplicate, and export decks. Sync questions, answers, card order, ratings, and saved study progress with a Supabase account.
 - Study in the preview or fullscreen. Rate cards as Known or Needs Review, resume a deck, or review missed cards.
-- Personalize your profile and pick a custom avatar, an accent color, and Light, Dark, or OLED Black.
+- Personalize your profile and pick a custom avatar, an accent color, and Light, Dark, or Midnight.
+- Open [Demo](https://cardgeniusai.vercel.app/demo) to try creating, studying, organizing, and personalizing a sample deck without signing in. The demo uses prepared cards and resets when you leave.
 
 Hosted Gemini generation is for signed-in adults in the United States and Canada using it for professional learning or training. It uses a server-only Gemini key and a shared daily usage budget. [Gemini API terms](https://ai.google.dev/gemini-api/terms)
 

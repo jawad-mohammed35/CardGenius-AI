@@ -46,6 +46,7 @@ function SaveDeckDialog({ scope, deck, subject, session, onClose, onSaved }: {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!isCloudScope(scope)) return;
     let active = true;
     getDeckFolders(scope).then(
       (folders) => { if (active) setFolders(folders.sort((a, b) => a.name.localeCompare(b.name))); },
@@ -79,12 +80,12 @@ function SaveDeckDialog({ scope, deck, subject, session, onClose, onSaved }: {
       <label className={styles.field}><span>Subject (optional)</span>
         <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. Biology" maxLength={subjectLimit} />
       </label>
-      <label className={styles.field}><span>Folder</span>
+      {isCloudScope(scope) && <label className={styles.field}><span>Folder</span>
         <select aria-label="Folder" value={folder} onChange={(event) => setFolder(event.target.value)} disabled={!folders}>
           <option value="">{folderLoadFailed ? "Folders unavailable" : "Unfiled"}</option>
           {folders?.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
         </select>
-      </label>
+      </label>}
     </DeckDialog>
   );
 }

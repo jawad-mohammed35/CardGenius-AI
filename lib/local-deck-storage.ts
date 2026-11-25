@@ -181,15 +181,13 @@ async function updateDeck(
 export function updateDeckDetails(
   scope: DeckScope,
   id: string,
-  changes: { title: string; subject: string; folderId: string | null },
+  changes: { title: string; subject: string },
 ) {
-  return updateDeck(scope, id, async (deck, current) => {
-    await requireFolder(current, scope, changes.folderId);
+  return updateDeck(scope, id, (deck) => {
     return {
       ...deck,
       title: title(changes.title, deckNameLimit),
       subject: changes.subject.trim().slice(0, subjectLimit),
-      folderId: changes.folderId,
       updatedAt: new Date().toISOString(),
     };
   });
@@ -231,33 +229,6 @@ export async function duplicateDeck(scope: DeckScope, id: string) {
   }, { subject: deck.subject, folderId: deck.folderId });
 }
 
-export async function saveFolder(scope: DeckScope, name: string, id?: string): Promise<DeckFolder> {
-  const folder = { scope, id: id ?? crypto.randomUUID(), name: title(name, folderNameLimit) };
-  await transaction("folders", "readwrite", async (current) => {
-    const folders = current.objectStore("folders");
-    const existing = await requestResult<DeckFolder[]>(folders.index("scope").getAll(scope));
-    if (id && !existing.some((item) => item.id === id)) throw new Error("This folder is no longer available.");
-    const taken = existing.some((item) => item.id !== folder.id && item.name.localeCompare(folder.name, undefined, { sensitivity: "accent" }) === 0);
-    if (taken) throw new Error("A folder with that name already exists.");
-    await requestResult(folders.put(folder));
-  });
-  emitChange(scope);
-  return folder;
-}
-
-export async function deleteFolder(scope: DeckScope, id: string) {
-  await transaction(["decks", "folders"], "readwrite", async (current) => {
-    const decks = current.objectStore("decks");
-    const affected = (await requestResult<StoredDeck[]>(decks.index("scope").getAll(scope))).filter((deck) => deck.folderId === id);
-    const now = new Date().toISOString();
-    await Promise.all([
-      requestResult(current.objectStore("folders").delete([scope, id])),
-      ...affected.map((deck) => requestResult(decks.put({ ...deck, folderId: null, updatedAt: now }))),
-    ]);
-  });
-  emitChange(scope);
-}
-
 const backupSchema = z.object({
   version: z.literal(1),
   decks: z.array(deckSchema.extend({
@@ -278,41 +249,4 @@ export function readBackup(contents: string) {
   const backup = backupSchema.safeParse(value);
   if (!backup.success) throw new Error("Choose a CardGeniusAI JSON backup with up to 500 valid decks.");
   return backup.data.decks;
-}
-
-export async function importLibrary(scope: DeckScope, contents: string) {
-  const importedDecks = readBackup(contents);
-  const now = new Date().toISOString();
-  await transaction(["decks", "folders"], "readwrite", async (current) => {
-    const folderStore = current.objectStore("folders");
-    const deckStore = current.objectStore("decks");
-    const existing = await requestResult<DeckFolder[]>(folderStore.index("scope").getAll(scope));
-    const folders = new Map(existing.map(({ id, name }) => [name.toLowerCase(), id]));
-    const operations: Promise<IDBValidKey>[] = [];
-    for (const { folder, ...deck } of importedDecks) {
-      const name = folder?.toLowerCase();
-      if (folder && name && !folders.has(name)) {
-        const id = crypto.randomUUID();
-        folders.set(name, id);
-        operations.push(requestResult(folderStore.add({ id, scope, name: folder })));
-      }
-      const stored: StoredDeck = { ...deck, id: crypto.randomUUID(), scope, folderId: folders.get(name ?? "") ?? null,
-        createdAt: now, updatedAt: now, lastStudiedAt: null, session: null };
-      operations.push(requestResult(deckStore.add(stored)));
-    }
-    await Promise.all(operations);
-  });
-  emitChange(scope);
-  return importedDecks.length;
-}
-
-export async function clearLibrary(scope: DeckScope) {
-  await transaction(["decks", "folders"], "readwrite", async (current) => {
-    await Promise.all(["decks", "folders"].map(async (name) => {
-      const store = current.objectStore(name);
-      const keys = await requestResult(store.index("scope").getAllKeys(scope));
-      await Promise.all(keys.map((key) => requestResult(store.delete(key))));
-    }));
-  });
-  emitChange(scope);
 }

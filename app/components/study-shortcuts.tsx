@@ -15,7 +15,7 @@ const shortcuts = [
   ["Esc", "Close the active dialog or exit fullscreen"],
 ];
 
-export function StudyShortcuts({ iconOnly = false }: { iconOnly?: boolean }) {
+export function StudyShortcuts({ iconOnly = false, exportEnabled = true }: { iconOnly?: boolean; exportEnabled?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
   return (
@@ -30,7 +30,7 @@ export function StudyShortcuts({ iconOnly = false }: { iconOnly?: boolean }) {
           <button type="button" className="icon-button" aria-label="Close shortcuts" onClick={() => dialog.current?.close()}><X size={17} aria-hidden="true" /></button>
         </header>
         <p>Focus the study area to use these controls.</p>
-        <dl>{shortcuts.map(([key, action]) => (
+        <dl>{shortcuts.filter(([key]) => exportEnabled || key !== "C").map(([key, action]) => (
           <div key={key}><dt><kbd>{key}</kbd></dt><dd>{action}</dd></div>
         ))}</dl>
       </dialog>

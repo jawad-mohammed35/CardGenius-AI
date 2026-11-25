@@ -28,6 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <footer className="site-width site-footer">
           <span>CardGeniusAI by <a href="https://www.linkedin.com/in/jawad-mohammed01/" target="_blank" rel="noopener noreferrer">Jawad Mohammed</a></span>
           <div>
+            <Link href="/demo">Demo</Link>
             <Link href="/privacy">Privacy Policy</Link>
             <a href="https://github.com/jawad-mohammed35/CardGenius-AI">GitHub</a>
           </div>
