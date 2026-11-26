@@ -36,6 +36,7 @@ export const difficultyLabels = {
   hard: "Advanced",
   expert: "Expert",
 };
+export const difficultyOptions = difficultySchema.options.map((value) => ({ value, label: difficultyLabels[value] }));
 
 export const difficultyDescriptions = {
   easy: "Basic definitions and introductory concepts.",

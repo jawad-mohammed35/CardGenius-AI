@@ -59,3 +59,6 @@
 .saveControls { display: grid; justify-items: end; row-gap: 5px; }
 .saveFeedback { color: var(--learned); font-size: .8rem; }
 .saveFeedback a { text-underline-offset: .15em; }
+.inlineFolder { display: grid; gap: 9px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; }
+.inlineActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: 7px 12px; }
+.newFolder { display: inline-flex; align-items: center; justify-self: start; gap: 6px; }

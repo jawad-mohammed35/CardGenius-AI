@@ -1,12 +1,15 @@
 "use client";
 
-import { BookOpen, ChevronLeft, Pencil } from "lucide-react";
+import { BookOpen, ChevronLeft, Pencil, Search } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { AccentSelect } from "../../components/accent-select";
+import { DeckDialog } from "../../components/deck-dialog";
+import { DeckIcon } from "../../components/deck-icon";
 import fields from "../../components/deck-dialog.module.css";
 import { DeckView } from "../../deck-view";
 import { getStoredDeck, saveStudySession, updateDeckCard, type DeckScope, type StoredDeck } from "../../../lib/deck-storage";
-import { cardSchema, difficultyLabels, type Difficulty } from "../../../lib/flashcards";
+import { cardSchema, difficultyOptions } from "../../../lib/flashcards";
 import { useDeckScope } from "../../../lib/use-deck-library";
 import type { StudySession } from "../../../lib/study-session";
 import styles from "../study-library.module.css";
@@ -23,6 +26,7 @@ function DeckDetailContent({ id, scope, editing }: {
 }) {
   const [snapshot, setSnapshot] = useState<{ deck?: StoredDeck; failed: boolean } | null>(null);
   const [sessionError, setSessionError] = useState(false);
+  const sessionWrites = useRef(Promise.resolve());
   const deck = snapshot?.deck;
   const href = `/study-decks/${id}`;
 
@@ -36,11 +40,11 @@ function DeckDetailContent({ id, scope, editing }: {
   }, [id, scope]);
 
   function onSessionChange(session: StudySession) {
-    void saveStudySession(scope, id, session).then(
+    setSnapshot((previous) => previous?.deck ? { ...previous, deck: { ...previous.deck, session } } : previous);
+    sessionWrites.current = sessionWrites.current.then(() => saveStudySession(scope, id, session)).then(
       (updated) => {
         setSessionError(false);
-        // Keep the mounted reader in place. Retain the session if the visitor switches to editing.
-        setSnapshot((previous) => previous?.deck ? { ...previous, deck: { ...previous.deck, session: updated.session, lastStudiedAt: updated.lastStudiedAt } } : previous);
+        setSnapshot((previous) => previous?.deck ? { ...previous, deck: { ...previous.deck, lastStudiedAt: updated.lastStudiedAt } } : previous);
       },
       () => setSessionError(true),
     );
@@ -52,7 +56,7 @@ function DeckDetailContent({ id, scope, editing }: {
         <Link href="/study-decks" className={styles.breadcrumb}><ChevronLeft size={17} aria-hidden="true" /> Study decks</Link>
         <header className={styles.pageHeader}>
           <div>
-            <h1 id="saved-deck-title">{deck?.title ?? "Study deck"}</h1>
+            <h1 id="saved-deck-title" className={styles.detailIdentity}>{deck && <DeckIcon appearance={deck.appearance} />}{deck?.title ?? "Study deck"}</h1>
             {deck && (
               <p>{[deck.subject, `${deck.flashcards.length} ${deck.flashcards.length === 1 ? "card" : "cards"}`,
                 deck.lastStudiedAt ? `Last studied ${dateFormat.format(new Date(deck.lastStudiedAt))}` : ""].filter(Boolean).join(" · ")}</p>
@@ -67,8 +71,9 @@ function DeckDetailContent({ id, scope, editing }: {
 
         {deck ? (
           <div className={`panel ${styles.detailPanel}`}>
-            {editing ? <CardEditor deck={deck} onUpdate={(updated) => setSnapshot({ deck: updated, failed: false })} /> : (
-              <DeckView deck={deck} initialSession={deck.session} onSessionChange={onSessionChange} />
+            {editing ? <CardEditor deck={deck} beforeSave={() => sessionWrites.current}
+              onUpdate={(updated) => setSnapshot({ deck: updated, failed: false })} /> : (
+              <DeckView deck={deck} identity={<DeckIcon appearance={deck.appearance} />} initialSession={deck.session} onSessionChange={onSessionChange} />
             )}
             {sessionError && <p className={styles.detailNotice} role="alert">This browser couldn’t save your study progress. Check site storage and try again.</p>}
           </div>
@@ -83,15 +88,67 @@ function DeckDetailContent({ id, scope, editing }: {
   );
 }
 
-function CardEditor({ deck, onUpdate }: { deck: StoredDeck; onUpdate: (deck: StoredDeck) => void }) {
-  const [index, setIndex] = useState(0);
-  const [draft, setDraft] = useState<StoredDeck["flashcards"][number] | null>(null);
+function CardEditor({ deck, beforeSave, onUpdate }: { deck: StoredDeck; beforeSave: () => Promise<void>; onUpdate: (deck: StoredDeck) => void }) {
+  const [query, setQuery] = useState("");
+  const [index, setIndex] = useState<number | null>(null);
+  const [notice, setNotice] = useState("");
+  const search = useRef<HTMLInputElement>(null);
+  const editedButton = useRef<HTMLButtonElement>(null);
+  const term = query.trim().toLocaleLowerCase();
+  const matches = deck.flashcards.map((card, position) => ({ card, position }))
+    .filter(({ card, position }) => !term || String(position + 1) === term ||
+      [card.front, card.back].some((value) => value.toLocaleLowerCase().includes(term)));
+
+  function closeEditor() {
+    setIndex(null);
+    requestAnimationFrame(() => (editedButton.current?.isConnected ? editedButton.current : search.current)?.focus({ preventScroll: true }));
+  }
+
+  return <section className={styles.editor} aria-labelledby="edit-card-heading">
+    <header>
+      <h2 id="edit-card-heading">Edit flashcards</h2>
+      <p>Search by card number, question, or answer.</p>
+    </header>
+    <label className={`${fields.field} ${styles.search}`}>
+      <span className="sr-only">Search flashcards</span><Search size={17} aria-hidden="true" />
+      <input ref={search} type="search" placeholder="Search flashcards…" value={query} onChange={(event) => setQuery(event.target.value)} />
+    </label>
+    <p className={notice ? styles.notice : "sr-only"} role="status">{notice}</p>
+    {matches.length ? <ul className={styles.editorCards}>
+      {matches.map(({ card, position }) => <li key={position}>
+        <button className={styles.editCard} type="button" onClick={(event) => {
+          editedButton.current = event.currentTarget;
+          setNotice("");
+          setIndex(position);
+        }}>
+          <span className="list-number">{position + 1}</span>
+          <span><strong>{card.front}</strong><small>{card.back}</small></span>
+          <span className={styles.editAction}><Pencil size={14} aria-hidden="true" /> Edit</span>
+        </button>
+      </li>)}
+    </ul> : <p role="status">No matching flashcards.</p>}
+    {index !== null && <EditCardDialog key={index} deck={deck} index={index} beforeSave={beforeSave} onClose={closeEditor}
+      onSaved={(updated) => { onUpdate(updated); setNotice(`Card ${index + 1} saved.`); closeEditor(); }} />}
+  </section>;
+}
+
+function EditCardDialog({ deck, index, beforeSave, onSaved, onClose }: {
+  deck: StoredDeck; index: number; beforeSave: () => Promise<void>; onSaved: (deck: StoredDeck) => void; onClose: () => void;
+}) {
+  const card = deck.flashcards[index];
+  const [values, setValues] = useState(card);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const card = deck.flashcards[index];
-  const values = draft ?? card;
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const fieldId = useId();
   const dirty = card.front !== values.front || card.back !== values.back || card.difficulty !== values.difficulty;
+
+  useEffect(() => {
+    if (!dirty) return;
+    function warn(event: BeforeUnloadEvent) { event.preventDefault(); event.returnValue = true; }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,54 +156,45 @@ function CardEditor({ deck, onUpdate }: { deck: StoredDeck; onUpdate: (deck: Sto
     const checked = cardSchema.safeParse(values);
     if (!checked.success) { setError("Enter a question and an answer that fit the length limits."); return; }
     setError("");
-    setNotice("");
     setPending(true);
     try {
+      await beforeSave();
       const updated = await updateDeckCard(deck.scope, deck.id, index, { ...checked.data, difficulty: values.difficulty });
-      onUpdate(updated);
-      setDraft(null);
-      setNotice(`Card ${index + 1} saved.`);
+      onSaved(updated);
     } catch {
-      setError("This card couldn’t be saved. Check browser storage and try again.");
+      setError("This card couldn’t be saved. Your edits are still here. Try again.");
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <section className={styles.editor} aria-labelledby="edit-card-heading">
-      <header>
-        <h2 id="edit-card-heading">Edit flashcards</h2>
-        <p>Choose a card, then update its question, answer, or difficulty.</p>
-      </header>
-      <label className={fields.field}><span>Card to edit</span>
-        <select aria-label="Card to edit" value={index} onChange={(event) => { setIndex(Number(event.target.value)); setDraft(null); setNotice(""); setError(""); }} disabled={pending || dirty}>
-          {deck.flashcards.map((option, optionIndex) => (
-            <option key={optionIndex} value={optionIndex}>{optionIndex + 1}. {option.front}</option>
-          ))}
-        </select>
-      </label>
-      <form className={styles.editorFields} onSubmit={submit}>
-        <label className={fields.field}><span>Question</span>
-          <textarea aria-label="Question" rows={3} required maxLength={220} value={values.front} disabled={pending} onChange={(event) => setDraft({ ...values, front: event.target.value })} />
-        </label>
-        <label className={fields.field}><span>Answer</span>
-          <textarea aria-label="Answer" rows={4} required maxLength={480} value={values.back} disabled={pending} onChange={(event) => setDraft({ ...values, back: event.target.value })} />
-        </label>
-        <label className={fields.field}><span>Difficulty</span>
-          <select aria-label="Difficulty" value={values.difficulty} disabled={pending} onChange={(event) => setDraft({ ...values, difficulty: event.target.value as Difficulty })}>
-            {Object.entries(difficultyLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </select>
-        </label>
-        {error && <p className={fields.error} role="alert">{error}</p>}
-        <p className={notice ? styles.notice : "sr-only"} role="status">{notice}</p>
-        <div className={styles.editorButtons}>
-          {dirty && <button type="button" className="secondary-button" disabled={pending} onClick={() => { setDraft(null); setError(""); }}>
-            Discard edits
-          </button>}
-          <button type="submit" className="primary-button" disabled={!dirty || pending}>{pending ? "Saving…" : "Save card"}</button>
+    <DeckDialog title={`Edit card ${index + 1}`} submitLabel="Save card" pending={pending} error={error} submitDisabled={!dirty}
+      onSubmit={submit} onClose={() => {
+        if (dirty) { setConfirmDiscard(true); return false; }
+        onClose();
+      }}>
+      <div className={fields.field}>
+        <label htmlFor={`${fieldId}-question`}><span>Question</span></label>
+        <textarea id={`${fieldId}-question`} rows={3} required maxLength={220} value={values.front} disabled={pending}
+          onChange={(event) => setValues({ ...values, front: event.target.value })} />
+      </div>
+      <div className={fields.field}>
+        <label htmlFor={`${fieldId}-answer`}><span>Answer</span></label>
+        <textarea id={`${fieldId}-answer`} rows={4} required maxLength={480} value={values.back} disabled={pending}
+          onChange={(event) => setValues({ ...values, back: event.target.value })} />
+      </div>
+      <div className={fields.field}>
+        <AccentSelect label="Difficulty" value={values.difficulty} options={difficultyOptions} disabled={pending}
+          onChange={(difficulty) => setValues({ ...values, difficulty })} />
+      </div>
+      {dirty && confirmDiscard && <div className={styles.discard}>
+        <p role="alert">Discard the unsaved changes to this card?</p>
+        <div>
+          <button type="button" className="secondary-button" disabled={pending} onClick={() => setConfirmDiscard(false)}>Keep editing</button>
+          <button type="button" className={fields.dangerButton} disabled={pending} onClick={onClose}>Discard edits</button>
         </div>
-      </form>
-    </section>
+      </div>}
+    </DeckDialog>
   );
 }

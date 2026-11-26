@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { DeckScope } from "./deck-storage";
 import { useCloudAccount } from "./cloud-account";
 import { deckSchema, defaultCardCount, difficultySchema, maxCardCount } from "./flashcards";
+import { defaultBindings, readBindings } from "./study-shortcuts";
 
 const change = "cardgenius:settings";
 const temporary = new Map<string, string | null>();
@@ -63,20 +64,31 @@ export const previewSchema = z.object({
   Object.keys(session.ratings).every((index) => /^\d+$/.test(index) && Number(index) < deck.flashcards.length)));
 
 const studySchema = z.object({
-  difficulty: difficultySchema,
-  count: z.number().int().min(1).max(maxCardCount),
-  advance: z.boolean(),
-  animate: z.boolean(),
+  difficulty: difficultySchema.catch("medium"),
+  count: z.number().int().min(1).max(maxCardCount).catch(defaultCardCount),
+  advance: z.boolean().catch(true),
+  animate: z.boolean().catch(true),
+  confirmRestart: z.boolean().catch(true),
+  shuffleOnStart: z.boolean().catch(false),
+  startingSide: z.enum(["question", "answer"]).catch("question"),
+  showHints: z.boolean().catch(true),
+  sounds: z.boolean().catch(false),
+  volume: z.number().int().min(0).max(100).catch(35),
+  shortcuts: z.unknown().transform(readBindings),
 });
 
 export type StudyPreferences = z.infer<typeof studySchema>;
-const defaults: StudyPreferences = { difficulty: "medium", count: defaultCardCount, advance: false, animate: true };
+export const defaultStudyPreferences = studySchema.parse({ shortcuts: defaultBindings });
 
 export function useStudyPreferences(scope: DeckScope) {
   const { profile } = useCloudAccount();
   const stored = storedJson(useStoredText(studyKey(scope)), studySchema);
   if (profile && scope === `cloud:${profile.owner_id}`) {
-    return studySchema.safeParse({ difficulty: profile.difficulty, count: profile.card_count, advance: profile.auto_advance, animate: profile.animate_cards }).data ?? defaults;
+    return studySchema.parse({
+      difficulty: profile.difficulty, count: profile.card_count, advance: profile.auto_advance, animate: profile.animate_cards,
+      confirmRestart: profile.confirm_restart, shuffleOnStart: profile.shuffle_on_start, startingSide: profile.starting_side,
+      showHints: profile.show_keyboard_hints, sounds: profile.study_sounds, volume: profile.study_volume, shortcuts: profile.study_shortcuts,
+    });
   }
-  return stored ?? defaults;
+  return stored ?? defaultStudyPreferences;
 }

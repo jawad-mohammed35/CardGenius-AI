@@ -24,6 +24,15 @@ export function rateCard(session: StudySession, rating: CardRating): StudySessio
   return { ...session, ratings, complete: session.order.every((index) => ratings[index] !== undefined) };
 }
 
+export function rateStudyCard(session: StudySession, rating: CardRating, advance: boolean): StudySession {
+  const next = rateCard(session, rating);
+  if (!advance || next.complete || !next.ratings[session.order[session.position]]) return next;
+  if (session.position + 1 < session.order.length) return { ...next, position: session.position + 1 };
+  // Cards can be skipped manually. After rating the last card, continue with the first unrated one.
+  const unrated = session.order.findIndex((index) => !next.ratings[index]);
+  return unrated >= 0 ? { ...next, position: unrated } : next;
+}
+
 export function shuffleStudySession(session: StudySession, random = Math.random): StudySession {
   const order = [...session.order];
   for (let index = order.length - 1; index > 0; index--) {

@@ -16,7 +16,7 @@
 }
 .steps li[data-finished] { border-color: var(--card-outline); }
 .steps li[aria-current="step"] { color: var(--accent-text); border-color: var(--accent-text); }
-.stage { padding: clamp(17px, 3vw, 27px); }
+.stage { padding: clamp(17px, 3vw, 27px); color: var(--ink); }
 .stage h2 { font-size: clamp(1.3rem, 3vw, 1.65rem); letter-spacing: -.035em; }
 .stage h2:focus { outline: none; }
 .stage p { color: var(--muted); }
@@ -26,11 +26,11 @@
 .library, .personalize { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .stack, .options { display: grid; min-width: 0; gap: 11px; align-content: start; }
 .options { padding: 14px; background: var(--bg); color: var(--ink); border: 1px solid var(--border); border-radius: 13px; }
-.options h3, .files legend { display: flex; align-items: center; gap: 7px; margin: 0; font-size: .9rem; font-weight: 680; }
+.options h3, .files h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: .9rem; font-weight: 680; overflow-wrap: anywhere; }
 .options p { font-size: .84rem; }
 .options button, .stack button { justify-self: start; }
 .field { display: grid; gap: 5px; font-size: .86rem; font-weight: 630; }
-.field :is(input, select, textarea) {
+.field :is(input, textarea) {
   width: 100%;
   min-height: 42px;
   padding: 8px 10px;
@@ -41,11 +41,17 @@
   font-weight: 450;
 }
 .field textarea { resize: vertical; }
+.field textarea[readonly] { resize: none; }
+.field [readonly] { border-color: var(--card-outline); }
+.stage .callout {
+  display: flex; align-items: start; gap: 6px; padding: 5px 8px; margin: 4px 0 0; border-radius: 7px;
+  background: var(--accent-soft); color: var(--accent-text); font-size: .77rem; line-height: 1.45;
+}
+.callout svg { flex: none; margin-top: 1px; }
 .files { display: grid; gap: 6px; }
-.files legend { margin-bottom: 6px; }
 .file {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 42px;
@@ -53,21 +59,31 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: .81rem;
-  cursor: pointer;
 }
-.file:has(input:checked) { color: var(--accent-text); background: var(--accent-soft); border-color: var(--card-outline); }
 .file small { color: var(--muted); }
-.file input, .preference input { accent-color: var(--accent-fill); margin: 0; }
+.preference input { accent-color: var(--accent-fill); margin: 0; }
 .preference, .accentPreview { display: flex; align-items: center; gap: 8px; font-size: .84rem; }
 .options .accentPreview { color: var(--accent-text); }
-.navigation { display: flex; align-items: center; justify-content: end; gap: 13px; margin-top: 15px; }
-.navigation > button:first-child:not(:only-child) { margin-inline-end: auto; }
+.options :global(.accent-select-trigger) { justify-self: stretch; }
+.options :global(.secondary-button)[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); border-color: var(--card-outline); }
+.folderButton { max-width: 100%; }
+.folderButton > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.options .sampleTitle { color: var(--ink); font-weight: 700; overflow-wrap: anywhere; }
+.deckMeta { display: flex; flex-wrap: wrap; gap: 5px; }
+.deckMeta span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 6px; background: var(--subtle); font-size: .76rem; overflow-wrap: anywhere; min-width: 0; }
+.deckMeta svg { flex: none; }
+.navigation { display: flex; align-items: center; justify-content: space-between; gap: 13px; margin-top: 15px; }
+.navigation > :global(.primary-button) { margin-inline-start: auto; }
 .finish { display: grid; justify-items: center; gap: 13px; text-align: center; padding: clamp(14px, 4vw, 42px) 0; }
 .finish p { max-width: 48ch; }
 .finishIcon { display: grid; width: 49px; height: 49px; place-items: center; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); }
 @media (max-width: 620px) {
   .creation, .library, .personalize { grid-template-columns: 1fr; }
-  .header { flex-wrap: wrap; gap: 9px; }
+  .header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 10px; }
+  .header > div { display: contents; }
+  .header h1 { font-size: clamp(1.28rem, 5.6vw, 1.9rem); }
+  .header p { grid-row: 2; grid-column: 1 / -1; margin: 0; }
+  .header > a { grid-column: 2; grid-row: 1; }
   .steps { gap: 4px; }
   .steps li { font-size: .69rem; }
 }

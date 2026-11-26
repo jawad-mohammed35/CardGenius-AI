@@ -1,5 +1,6 @@
 import { deckSchema, type Deck } from "./flashcards.ts";
 import { z } from "zod";
+import { deckAppearanceSchema, type DeckAppearance } from "./deck-appearance.ts";
 import type { StudySession } from "./study-session.ts";
 
 export type LocalDeckScope = "guest" | "demo";
@@ -14,6 +15,7 @@ export type StoredDeck = Deck & {
   updatedAt: string;
   lastStudiedAt: string | null;
   session: StudySession | null;
+  appearance?: DeckAppearance;
 };
 
 export type DeckFolder = {
@@ -139,7 +141,7 @@ async function requireFolder(current: IDBTransaction, scope: DeckScope, folderId
 export async function saveNewDeck(
   scope: DeckScope,
   deck: Deck,
-  options: { subject: string; folderId: string | null; session?: StudySession },
+  options: { subject: string; folderId: string | null; session?: StudySession; appearance?: DeckAppearance },
 ): Promise<StoredDeck> {
   const now = new Date().toISOString();
   const stored: StoredDeck = {
@@ -152,6 +154,7 @@ export async function saveNewDeck(
     updatedAt: now,
     lastStudiedAt: null,
     session: options.session ?? null,
+    appearance: options.appearance,
   };
   await transaction(["decks", "folders"], "readwrite", async (current) => {
     await requireFolder(current, scope, stored.folderId);
@@ -181,13 +184,14 @@ async function updateDeck(
 export function updateDeckDetails(
   scope: DeckScope,
   id: string,
-  changes: { title: string; subject: string },
+  changes: { title?: string; subject?: string; appearance?: DeckAppearance },
 ) {
   return updateDeck(scope, id, (deck) => {
     return {
       ...deck,
-      title: title(changes.title, deckNameLimit),
-      subject: changes.subject.trim().slice(0, subjectLimit),
+      title: changes.title === undefined ? deck.title : title(changes.title, deckNameLimit),
+      subject: changes.subject === undefined ? deck.subject : changes.subject.trim().slice(0, subjectLimit),
+      appearance: changes.appearance ?? deck.appearance,
       updatedAt: new Date().toISOString(),
     };
   });
@@ -226,7 +230,7 @@ export async function duplicateDeck(scope: DeckScope, id: string) {
   return saveNewDeck(scope, {
     title: deck.title.slice(0, deckNameLimit - suffix.length) + suffix,
     flashcards: deck.flashcards,
-  }, { subject: deck.subject, folderId: deck.folderId });
+  }, { subject: deck.subject, folderId: deck.folderId, appearance: deck.appearance });
 }
 
 const backupSchema = z.object({
@@ -234,13 +238,14 @@ const backupSchema = z.object({
   decks: z.array(deckSchema.extend({
     subject: z.string().max(subjectLimit).default(""),
     folder: z.string().trim().min(1).max(folderNameLimit).nullable(),
+    appearance: deckAppearanceSchema.optional(),
   })).max(500),
 });
 
 export function exportLibrary(library: DeckLibrary) {
   const folders = new Map(library.folders.map(({ id, name }) => [id, name]));
-  return JSON.stringify({ version: 1, decks: library.decks.map(({ title, flashcards, subject, folderId }) =>
-    ({ title, flashcards, subject, folder: folders.get(folderId ?? "") ?? null })) }, null, 2);
+  return JSON.stringify({ version: 1, decks: library.decks.map(({ title, flashcards, subject, folderId, appearance }) =>
+    ({ title, flashcards, subject, folder: folders.get(folderId ?? "") ?? null, appearance })) }, null, 2);
 }
 
 export function readBackup(contents: string) {

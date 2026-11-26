@@ -272,6 +272,17 @@
 .colorChoices span { width: 24px; height: 24px; border-radius: 50%; }
 .flag { display: flex; gap: 7px; align-items: center; font-size: .875rem; }
 .flag input { accent-color: var(--accent-fill); }
+.studyGroup { display: grid; gap: 10px; min-width: 0; margin: 5px 0 0; padding: 9px 0 5px; border: 0; border-top: 1px solid var(--border); }
+.studyGroup legend { padding-inline-end: 9px; margin: 0; color: var(--ink); }
+.studyGroup > p { color: var(--muted); font-size: .82rem; }
+.studyGroup > button { justify-self: start; }
+.volume { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; width: min(100%, 350px); font-size: .875rem; }
+.volume output { color: var(--muted); }
+.volume input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent-fill); }
+.shortcutRows { display: grid; gap: 5px; max-width: 540px; padding: 0; list-style: none; }
+.shortcutRows li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(65px, max-content) auto; gap: 6px 10px; align-items: center; font-size: .84rem; }
+.shortcutRows li button { min-height: 34px; }
+.shortcutRows li :global(.secondary-button)[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); }
 .dataCounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-width: 400px; }
 .dataCounts > div { padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--subtle); font-size: .875rem; }
 .dataCounts strong { display: block; margin-bottom: 3px; font-size: 1.35rem; }

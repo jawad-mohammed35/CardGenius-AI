@@ -1,28 +1,33 @@
 "use client";
 
-import { BookOpen, Copy, Ellipsis, Folder, FolderPlus, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpen, Copy, Ellipsis, Folder, FolderInput, FolderPlus, Layers, Palette, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
 import { DeckDialog } from "../components/deck-dialog";
+import { AccentSelect } from "../components/accent-select";
+import { DeckIcon, deckIconChoices } from "../components/deck-icon";
 import fields from "../components/deck-dialog.module.css";
 import {
   deckNameLimit, deleteDeck, deleteFolder, duplicateDeck, folderNameLimit, isCloudScope, saveFolder, subjectLimit, updateDeckDetails,
   type DeckFolder, type DeckScope, type StoredDeck,
 } from "../../lib/deck-storage";
-import { difficultyLabels } from "../../lib/flashcards";
+import { deckColors, deckIcons, defaultDeckAppearance } from "../../lib/deck-appearance";
+import { difficultyLabels, difficultyOptions } from "../../lib/flashcards";
 import { useDeckLibrary, useDeckScope } from "../../lib/use-deck-library";
 import styles from "./study-library.module.css";
 
 type DialogAction =
   | { type: "newFolder" }
   | { type: "renameFolder" | "deleteFolder"; folder: DeckFolder }
-  | { type: "renameDeck" | "deleteDeck"; deck: StoredDeck };
+  | { type: "renameDeck" | "moveDeck" | "changeIcon" | "deleteDeck"; deck: StoredDeck };
 
 const heading = {
   newFolder: "New folder",
   renameFolder: "Rename folder",
   deleteFolder: "Delete folder?",
-  renameDeck: "Edit deck details",
+  renameDeck: "Rename deck",
+  moveDeck: "Move to folder",
+  changeIcon: "Change deck icon",
   deleteDeck: "Delete deck?",
 };
 
@@ -31,10 +36,14 @@ const submitLabel = {
   renameFolder: "Save changes",
   deleteFolder: "Delete folder",
   renameDeck: "Save changes",
+  moveDeck: "Move deck",
+  changeIcon: "Apply icon",
   deleteDeck: "Delete deck",
 };
 
 const formatDate = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
+const sorting = [{ value: "recent", label: "Last updated" }, { value: "created", label: "Newest created" }, { value: "name", label: "Name A–Z" }];
+const colorLabels = { accent: "App accent", blue: "Blue", violet: "Violet", green: "Green", rose: "Rose", amber: "Amber" };
 
 export function StudyLibrary() {
   const scope = useDeckScope();
@@ -140,21 +149,9 @@ function LibraryContents({ scope }: { scope: DeckScope }) {
               <span className="sr-only">Search decks</span><Search size={17} aria-hidden="true" />
               <input type="search" placeholder="Search decks…" value={query} onChange={(event) => setQuery(event.target.value)} />
             </label>
-            <label>
-              <span className="sr-only">Filter by difficulty</span>
-              <select aria-label="Filter by difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>
-                <option value="all">All difficulties</option>
-                {Object.entries(difficultyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-            <label>
-              <span className="sr-only">Sort decks</span>
-              <select aria-label="Sort decks" value={sort} onChange={(event) => setSort(event.target.value)}>
-                <option value="recent">Last updated</option>
-                <option value="created">Newest created</option>
-                <option value="name">Name A–Z</option>
-              </select>
-            </label>
+            <AccentSelect label="Filter by difficulty" hideLabel value={difficulty} onChange={setDifficulty}
+              options={[{ value: "all", label: "All difficulties" }, ...difficultyOptions]} />
+            <AccentSelect label="Sort decks" hideLabel value={sort} options={sorting} onChange={setSort} />
           </div>
 
           <p className={notice ? styles.notice : "sr-only"} role="status">{notice}</p>
@@ -169,6 +166,8 @@ function LibraryContents({ scope }: { scope: DeckScope }) {
               {matching.map((deck) => <DeckTile key={deck.id} deck={deck}
                 folderName={deck.folderId ? foldersById.get(deck.folderId)?.name : undefined}
                 onRename={() => { setNotice(""); setDialog({ type: "renameDeck", deck }); }}
+                onMove={canManageFolders ? () => { setNotice(""); setDialog({ type: "moveDeck", deck }); } : undefined}
+                onIcon={() => { setNotice(""); setDialog({ type: "changeIcon", deck }); }}
                 onDelete={() => { setNotice(""); setDialog({ type: "deleteDeck", deck }); }}
                 onDuplicate={() => void duplicate(deck)} duplicateBusy={duplicateBusy} />)}
             </ul>
@@ -178,7 +177,7 @@ function LibraryContents({ scope }: { scope: DeckScope }) {
               <h3>{query || difficulty !== "all" ? "No matching decks" : selected === "all" ? "No decks yet" : "No decks in this folder"}</h3>
               <p>{query || difficulty !== "all" ? "Try another search or clear your filters."
                 : selected === "all" ? "Create a flashcard deck and save it here to study later."
-                  : "Move decks here from their deck details, or choose this folder when saving a deck."}</p>
+                  : "Use a deck’s Move to folder action, or choose this folder when saving a deck."}</p>
               {query || difficulty !== "all" ? (
                 <button type="button" className="secondary-button" onClick={() => { setQuery(""); setDifficulty("all"); }}>Clear filters</button>
               ) : selected === "all" && <Link href="/" className="primary-button">Create Deck</Link>}
@@ -205,9 +204,9 @@ function FolderButton({ label, active, total, onClick, all = false }: {
   );
 }
 
-function DeckTile({ deck, folderName, onRename, onDelete, onDuplicate, duplicateBusy }: {
+function DeckTile({ deck, folderName, onRename, onMove, onIcon, onDelete, onDuplicate, duplicateBusy }: {
   deck: StoredDeck; folderName: string | undefined;
-  onRename: () => void; onDelete: () => void; onDuplicate: () => void; duplicateBusy: boolean;
+  onRename: () => void; onMove?: () => void; onIcon: () => void; onDelete: () => void; onDuplicate: () => void; duplicateBusy: boolean;
 }) {
   const menuRef = useRef<HTMLDetailsElement>(null);
   const menuTrigger = useRef<HTMLElement>(null);
@@ -224,18 +223,29 @@ function DeckTile({ deck, folderName, onRename, onDelete, onDuplicate, duplicate
   return (
     <li className={`panel ${styles.deckTile}`}>
       <div className={styles.tileHeader}>
-        <span className={styles.tileIcon}><Layers size={18} aria-hidden="true" /></span>
+        <DeckIcon appearance={deck.appearance} />
         <details ref={menuRef} name="deck-actions" className={styles.menu} onKeyDown={(event) => {
           if (event.key === "Escape" && menuRef.current?.open) { event.preventDefault(); closeMenu(); }
+        }} onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
         }}>
           <summary ref={menuTrigger} aria-label={`More actions for ${deck.title}`} title="More actions"><Ellipsis size={19} aria-hidden="true" /></summary>
           <div className={styles.menuButtons}>
+            <Link href={href} onClick={closeMenu}><BookOpen size={15} aria-hidden="true" /> Study deck</Link>
+            <Link href={`${href}?view=edit`} onClick={closeMenu}><Pencil size={15} aria-hidden="true" /> Edit cards</Link>
             <button type="button" onClick={() => { closeMenu(); onRename(); }}>
-              <Pencil size={15} aria-hidden="true" /> Rename or move
+              <Pencil size={15} aria-hidden="true" /> Rename deck
+            </button>
+            {onMove && <button type="button" onClick={() => { closeMenu(); onMove(); }}>
+              <FolderInput size={15} aria-hidden="true" /> Move to folder
+            </button>}
+            <button type="button" onClick={() => { closeMenu(); onIcon(); }}>
+              <Palette size={15} aria-hidden="true" /> Change deck icon
             </button>
             <button type="button" disabled={duplicateBusy} onClick={() => { closeMenu(); onDuplicate(); }}>
-              <Copy size={15} aria-hidden="true" /> Duplicate
+              <Copy size={15} aria-hidden="true" /> Duplicate deck
             </button>
+            <hr />
             <button type="button" className={styles.destructive}
               onClick={() => { closeMenu(); onDelete(); }}>
               <Trash2 size={15} aria-hidden="true" /> Delete deck
@@ -244,10 +254,11 @@ function DeckTile({ deck, folderName, onRename, onDelete, onDuplicate, duplicate
         </details>
       </div>
       <h3><Link href={href}>{deck.title}</Link></h3>
-      {(deck.subject || folderName) && <p className={styles.context}>{[deck.subject, folderName].filter(Boolean).join(" · ")}</p>}
+      {deck.subject && <p className={styles.context}>{deck.subject}</p>}
       <div className={styles.tags}>
         <span>{deck.flashcards.length} {deck.flashcards.length === 1 ? "card" : "cards"}</span>
         <span>{difficulty}</span>
+        {folderName && <span className={styles.folderTag} title={folderName}><Folder size={13} aria-hidden="true" /><span>{folderName}</span></span>}
       </div>
       <dl className={styles.timestamps}>
         <div><dt>Created</dt><dd><time dateTime={deck.createdAt}>{formatDate.format(new Date(deck.createdAt))}</time></dd></div>
@@ -270,13 +281,14 @@ function LibraryDialog({ action, folders, scope, onClose, onSuccess }: {
   const [name, setName] = useState("deck" in action ? action.deck.title : "folder" in action ? action.folder.name : "");
   const [subject, setSubject] = useState("deck" in action ? action.deck.subject : "");
   const [folderId, setFolderId] = useState("deck" in action ? action.deck.folderId ?? "" : "");
+  const [appearance, setAppearance] = useState("deck" in action ? action.deck.appearance ?? defaultDeckAppearance : defaultDeckAppearance);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    if (!isDeleting && !name.trim()) { setError("Enter a name to continue."); return; }
+    if (["renameDeck", "renameFolder", "newFolder"].includes(action.type) && !name.trim()) { setError("Enter a name to continue."); return; }
     setPending(true);
     setError("");
     try {
@@ -287,15 +299,21 @@ function LibraryDialog({ action, folders, scope, onClose, onSuccess }: {
         await deleteFolder(scope, action.folder.id);
         onSuccess(`“${action.folder.name}” was deleted. Its decks moved to Unfiled.`, "all");
       } else if (action.type === "renameDeck") {
-        await updateDeckDetails(scope, action.deck.id, { title: name, subject, folderId: folderId || null });
+        await updateDeckDetails(scope, action.deck.id, { title: name, subject });
         onSuccess("Deck details saved.");
-      } else {
+      } else if (action.type === "moveDeck") {
+        await updateDeckDetails(scope, action.deck.id, { folderId: folderId || null });
+        onSuccess(`Deck moved to ${folders.find(({ id }) => id === folderId)?.name ?? "Unfiled"}.`);
+      } else if (action.type === "changeIcon") {
+        await updateDeckDetails(scope, action.deck.id, { appearance });
+        onSuccess("Deck icon updated.");
+      } else if (action.type === "newFolder" || action.type === "renameFolder") {
         const folder = await saveFolder(scope, name, action.type === "renameFolder" ? action.folder.id : undefined);
         onSuccess(action.type === "renameFolder" ? "Folder renamed." : "Folder created.", folder.id);
       }
     } catch (error) {
       setError(error instanceof Error && /already exists|no longer/.test(error.message)
-        ? error.message : "Your changes couldn’t be saved. Check browser storage and try again.");
+        ? error.message : "Your changes couldn’t be saved. Try again.");
       setPending(false);
     }
   }
@@ -305,8 +323,39 @@ function LibraryDialog({ action, folders, scope, onClose, onSuccess }: {
       destructive={isDeleting} onClose={onClose} onSubmit={submit}>
       {isDeleting ? (
         <p className={fields.description}>{action.type === "deleteDeck"
-          ? <>Delete “{name}” and its study progress from this browser? This can’t be undone.</>
+          ? <>Delete “{name}” and its study progress? This can’t be undone.</>
           : <>Delete “{name}”? Its decks will move to Unfiled.</>}</p>
+      ) : action.type === "moveDeck" ? (
+        <div className={fields.field}>
+          <AccentSelect label="Destination folder" value={folderId} onChange={setFolderId} disabled={pending}
+            options={[{ value: "", label: "Unfiled" }, ...folders.map(({ id, name }) => ({ value: id, label: name }))]} />
+        </div>
+      ) : action.type === "changeIcon" ? (
+        <>
+          <div className={styles.iconPreview}><DeckIcon appearance={appearance} size={22} /><strong>{name}</strong></div>
+          <fieldset className={styles.iconPicker}>
+            <legend>Icon</legend>
+            <div className={styles.icons}>
+              {deckIcons.map((icon) => <label key={icon}>
+                <input type="radio" name="deck-icon" checked={appearance.icon === icon} disabled={pending}
+                  onChange={() => setAppearance({ ...appearance, icon })} />
+                <DeckIcon appearance={{ ...appearance, icon }} size={17} /><span>{deckIconChoices[icon].label}</span>
+              </label>)}
+            </div>
+          </fieldset>
+          <fieldset className={styles.iconPicker}>
+            <legend>Color</legend>
+            <div className={styles.iconColors}>
+              {deckColors.map((color) => <label key={color} title={colorLabels[color]}>
+                <input type="radio" name="deck-color" aria-label={colorLabels[color]} checked={appearance.color === color} disabled={pending}
+                  onChange={() => setAppearance({ ...appearance, color })} />
+                <span className="deck-emblem" data-color={color} aria-hidden="true" />
+              </label>)}
+            </div>
+          </fieldset>
+          <button type="button" className={`text-button ${styles.restoreIcon}`} disabled={pending}
+            onClick={() => setAppearance(defaultDeckAppearance)}>Restore default icon</button>
+        </>
       ) : (
         <>
           <label className={fields.field}><span>{action.type === "renameDeck" ? "Deck name" : "Folder name"}</span>
@@ -317,12 +366,6 @@ function LibraryDialog({ action, folders, scope, onClose, onSuccess }: {
             <label className={fields.field}><span>Subject (optional)</span>
               <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={subjectLimit} placeholder="e.g. Biology" />
             </label>
-            {isCloudScope(scope) && <label className={fields.field}><span>Folder</span>
-              <select aria-label="Folder" value={folderId} onChange={(event) => setFolderId(event.target.value)}>
-                <option value="">Unfiled</option>
-                {folders.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-              </select>
-            </label>}
           </>}
         </>
       )}

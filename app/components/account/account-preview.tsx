@@ -3,18 +3,17 @@
 import { Database, Palette, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { previewKey, useStudyPreferences, useStoredText, writeStoredText, type StudyPreferences } from "../../../lib/browser-settings";
+import { previewKey, useStoredText, writeStoredText } from "../../../lib/browser-settings";
 import { clearLibrary, countLocalDecks, exportLibrary, importLibrary, migrateLocalDecks, type DeckScope } from "../../../lib/deck-storage";
 import { useCloudAccount } from "../../../lib/cloud-account";
-import { difficultyLabels, maxCardCount } from "../../../lib/flashcards";
 import { avatarColors, avatarIcons, prepareAvatar, useUserProfile, type LocalProfile } from "../../../lib/profile";
 import { browserSupabase } from "../../../lib/supabase/browser";
 import { useDeckLibrary } from "../../../lib/use-deck-library";
 import { AppearanceFields } from "../../appearance-control";
 import { DeckDialog } from "../deck-dialog";
-import { StudyShortcuts } from "../study-shortcuts";
 import { PasswordChangeForm } from "./password-change-form";
 import { ProfileAvatar } from "./profile-avatar";
+import { StudySettings } from "./study-settings";
 import styles from "./account.module.css";
 
 const sections = [
@@ -143,39 +142,6 @@ function ProfileEditor() {
       </fieldset>
       {error && <p role="alert" className="form-error">{error}</p>}
       <div className={styles.actions}><button type="submit" className="primary-button" disabled={loading || saving}>Save profile</button><p role="status">{notice}</p></div>
-    </form>
-  );
-}
-
-function StudySettings({ scope }: { scope: DeckScope }) {
-  const { saveProfile } = useCloudAccount();
-  const saved = useStudyPreferences(scope);
-  const [draft, setDraft] = useState<StudyPreferences>(saved);
-  const [notice, setNotice] = useState("");
-  function patch(values: Partial<StudyPreferences>) { setDraft({ ...draft, ...values }); setNotice(""); }
-  return (
-    <form className={styles.settingsStack} onSubmit={async (event) => {
-      event.preventDefault();
-      try {
-        await saveProfile({ difficulty: draft.difficulty, card_count: draft.count, auto_advance: draft.advance, animate_cards: draft.animate });
-        setNotice("Study preferences saved.");
-      } catch { setNotice("Couldn’t save your study preferences. Try again."); }
-    }}>
-      <p>Set defaults for new decks and decide what happens when you rate a card.</p>
-      <div className={styles.settingsFields}>
-        <label className={styles.settingsField}>Default difficulty
-          <select value={draft.difficulty} onChange={(event) => patch({ difficulty: event.target.value as StudyPreferences["difficulty"] })}>
-            {Object.entries(difficultyLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </select>
-        </label>
-        <label className={styles.settingsField}>Default deck size
-          <input type="number" min={1} max={maxCardCount} required value={draft.count || ""} onChange={(event) => patch({ count: Number(event.target.value) })} />
-        </label>
-      </div>
-      <label className={styles.flag}><input type="checkbox" checked={draft.advance} onChange={(event) => patch({ advance: event.target.checked })} /> Move to the next card after rating</label>
-      <label className={styles.flag}><input type="checkbox" checked={draft.animate} onChange={(event) => patch({ animate: event.target.checked })} /> Animate card flips and transitions</label>
-      <div className={styles.actions}><button type="submit" className="primary-button">Save study preferences</button><StudyShortcuts /></div>
-      <p role="status">{notice}</p>
     </form>
   );
 }

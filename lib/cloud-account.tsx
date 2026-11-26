@@ -1,7 +1,7 @@
 "use client";
 
 import type { User } from "@supabase/supabase-js";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { browserSupabase } from "./supabase/browser";
 import { authConfigured } from "./supabase/config";
 
@@ -18,6 +18,13 @@ type CloudProfile = {
   card_count: number;
   auto_advance: boolean;
   animate_cards: boolean;
+  confirm_restart: boolean;
+  shuffle_on_start: boolean;
+  starting_side: string;
+  show_keyboard_hints: boolean;
+  study_sounds: boolean;
+  study_volume: number;
+  study_shortcuts: unknown;
 };
 
 type ProfileChange = Partial<Omit<CloudProfile, "owner_id">>;
@@ -33,10 +40,14 @@ export function CloudAccountProvider({ children }: { children: React.ReactNode }
   const [identity, setIdentity] = useState<{ user: User | null; ready: boolean }>({ user: null, ready: !authConfigured });
   const [snapshot, setSnapshot] = useState<{ owner: string; profile: CloudProfile | null }>();
   const owner = identity.user?.id;
+  const activeOwner = useRef<string | undefined>(undefined);
+  const profileVersion = useRef(0);
+  const writes = useRef(Promise.resolve());
 
   useEffect(() => {
     if (!authConfigured) return;
     const { data } = browserSupabase().auth.onAuthStateChange((_event, session) => {
+      activeOwner.current = session?.user.id;
       setIdentity({ user: session?.user ?? null, ready: true });
     });
     return () => data.subscription.unsubscribe();
@@ -46,8 +57,10 @@ export function CloudAccountProvider({ children }: { children: React.ReactNode }
     if (!owner) return;
     let active = true;
     function load() {
+      const version = ++profileVersion.current;
       void browserSupabase().from("profiles").select("*").eq("owner_id", owner).maybeSingle().then(({ data, error }) => {
-        if (active) setSnapshot((previous) => error && previous?.owner === owner ? previous : { owner: owner!, profile: data as CloudProfile | null });
+        if (active && activeOwner.current === owner && profileVersion.current === version) setSnapshot((previous) =>
+          error && previous?.owner === owner ? previous : { owner: owner!, profile: data as CloudProfile | null });
       });
     }
     load();
@@ -57,10 +70,18 @@ export function CloudAccountProvider({ children }: { children: React.ReactNode }
 
   const saveProfile = useCallback(async (changes: ProfileChange) => {
     if (!owner) throw new Error("Sign in first.");
-    const { data, error } = await browserSupabase().from("profiles")
-      .upsert({ owner_id: owner, ...changes }).select("*").single();
-    if (error) throw new Error("We couldn’t save your settings. Try again.");
-    setSnapshot({ owner, profile: data as CloudProfile });
+    const write = writes.current.then(async () => {
+      if (activeOwner.current !== owner) throw new Error("Sign in first.");
+      const { data, error } = await browserSupabase().from("profiles")
+        .upsert({ owner_id: owner, ...changes }).select("*").single();
+      if (error) throw new Error("We couldn’t save your settings. Try again.");
+      if (activeOwner.current === owner) {
+        profileVersion.current++;
+        setSnapshot({ owner, profile: data as CloudProfile });
+      }
+    });
+    writes.current = write.catch(() => {});
+    await write;
   }, [owner]);
 
   return <accountContext.Provider value={{ ...identity, profile: owner && snapshot?.owner === owner ? snapshot.profile : null,

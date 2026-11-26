@@ -5,16 +5,17 @@ import { useId, useLayoutEffect, useRef, type FormEvent, type ReactNode } from "
 import styles from "./deck-dialog.module.css";
 
 export function DeckDialog({
-  title, children, onClose, onSubmit, submitLabel, pending, error, destructive,
+  title, children, onClose, onSubmit, submitLabel, pending, error, destructive, submitDisabled,
 }: {
   title: string;
   children: ReactNode;
-  onClose: () => void;
+  onClose: () => void | false;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   submitLabel: string;
   pending: boolean;
   error?: string;
   destructive?: boolean;
+  submitDisabled?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const headingId = useId();
@@ -25,8 +26,7 @@ export function DeckDialog({
   }, []);
 
   function dismiss() {
-    ref.current?.close();
-    onClose();
+    if (onClose() !== false) ref.current?.close();
   }
 
   return (
@@ -45,7 +45,7 @@ export function DeckDialog({
         {error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.dialogActions}>
           <button type="button" className="secondary-button" onClick={dismiss} disabled={pending}>Cancel</button>
-          <button type="submit" className={destructive ? styles.dangerButton : "primary-button"} disabled={pending}>
+          <button type="submit" className={destructive ? styles.dangerButton : "primary-button"} disabled={pending || submitDisabled}>
             {pending ? "Working…" : submitLabel}
           </button>
         </div>

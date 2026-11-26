@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, BookOpen, Check, FileImage, FileText, Folder, Layers, Paperclip, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, FileImage, FileText, Folder, Layers, Paperclip, Sparkles, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Accent, Theme } from "../../lib/appearance";
 import { difficultyLabels, type Deck, type Difficulty } from "../../lib/flashcards";
 import type { StudySession } from "../../lib/study-session";
 import { AppearanceChoices } from "../appearance-control";
+import { AccentSelect } from "../components/accent-select";
 import { FlashcardStudy } from "../deck-view";
 import styles from "./demo.module.css";
 
@@ -28,42 +29,33 @@ const sampleCards = [
   { front: "Why assign a discussion lead to an agenda item?", back: "The lead can prepare the context, guide the discussion, and bring it to a clear outcome." },
   { front: "What should you review before ending a meeting?", back: "Confirm decisions, action owners, deadlines, and any topics that need a follow-up." },
 ];
+const sampleDifficulty: Difficulty = "medium";
+const sampleDeck: Deck = { title: sampleTopic, flashcards: sampleCards.map((card) => ({ ...card, difficulty: sampleDifficulty })) };
+
+function Callout({ children }: { children: string }) {
+  return <p className={styles.callout}><ArrowUp size={14} aria-hidden="true" />{children}</p>;
+}
 
 export function Demo() {
   const [step, setStep] = useState(0);
-  const [skipFrom, setSkipFrom] = useState<number | null>(null);
-  const [source, setSource] = useState<"topic" | "notes">("topic");
-  const [topic, setTopic] = useState(sampleTopic);
-  const [notes, setNotes] = useState("");
-  const [files, setFiles] = useState<string[]>([]);
-  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
-  const [count, setCount] = useState(5);
-  const [deck, setDeck] = useState<Deck | null>(null);
+  const [deck, setDeck] = useState(sampleDeck);
   const [session, setSession] = useState<StudySession | null>(null);
   const [saved, setSaved] = useState(false);
   const [folder, setFolder] = useState("");
   const [inFolder, setInFolder] = useState(false);
+  const [folderView, setFolderView] = useState(false);
+  const [folderError, setFolderError] = useState("");
   const [theme, setTheme] = useState<Theme>("light");
   const [accent, setAccent] = useState<Accent>("monochrome");
-  const [advance, setAdvance] = useState(false);
+  const [advance, setAdvance] = useState(true);
   const [animate, setAnimate] = useState(true);
   const stageHeading = useRef<HTMLHeadingElement>(null);
   const lastStep = steps.length - 1;
-  const [material, setMaterial] = useState("");
-
-  useEffect(() => { if (step > 0) stageHeading.current?.focus(); }, [step]);
-
-  function generate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const selected = source === "topic" ? topic.trim() : notes.trim();
-    if (!selected && !files.length) { setMaterial("Enter a topic, paste notes, or attach a sample file."); return; }
-    setDeck({ title: sampleTopic, flashcards: sampleCards.slice(0, count).map((card) => ({ ...card, difficulty })) });
-    setMaterial("");
-    setSession(null);
-    setSaved(false);
-    setInFolder(false);
-    setStep(1);
-  }
+  const navigationStarted = useRef(false);
+  useEffect(() => {
+    if (navigationStarted.current || step > 0) stageHeading.current?.focus();
+    if (step > 0) navigationStarted.current = true;
+  }, [step]);
 
   return <section className={styles.demo} aria-labelledby="demo-title">
     <header className={styles.header}>
@@ -76,91 +68,93 @@ export function Demo() {
     <ol className={styles.steps} aria-label="Demo progress">
       {steps.map((label, index) => <li key={label} aria-current={step === index ? "step" : undefined} data-finished={index < step || undefined}>{label}</li>)}
     </ol>
-    <div className={`panel ${styles.stage}`}>
-      {step === 0 && <form className={styles.stageStack} onSubmit={generate}>
+    <div className={`panel demo-appearance ${styles.stage}`} data-theme={theme} data-accent={accent}>
+      {step === 0 && <div className={styles.stageStack}>
         <h2 ref={stageHeading} tabIndex={-1}>Set up a deck</h2>
+        <p>See what goes into the sample deck, then study the cards it produces.</p>
         <div className={styles.creation}>
           <section className={styles.stack} aria-label="Sample study material">
-            <div className="view-switch" role="group" aria-label="Source type">
-              <button type="button" aria-pressed={source === "topic"} onClick={() => setSource("topic")}>Topic</button>
-              <button type="button" aria-pressed={source === "notes"} onClick={() => setSource("notes")}>Pasted notes</button>
+            <div>
+              <label className={styles.field}>Topic<input value={sampleTopic} readOnly tabIndex={-1} /></label>
+              <Callout>Enter any subject you want to study.</Callout>
             </div>
-            {source === "topic" ? <label className={styles.field}>Topic<input value={topic} onChange={(event) => setTopic(event.target.value)} maxLength={160} /></label>
-              : <label className={styles.field}>Study notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={8000} /></label>}
-            {source === "notes" && !notes && <button className="text-button" type="button" onClick={() => setNotes(sampleNotes)}>Use sample notes</button>}
-            <fieldset className={styles.files}>
-              <legend><Paperclip size={15} aria-hidden="true" /> Attach sample files</legend>
-              {sampleFiles.map(({ name, format, icon: Icon }) => <label className={styles.file} key={name}>
-                <input type="checkbox" checked={files.includes(name)} onChange={(event) => {
-                  setFiles(event.target.checked ? [...files, name] : files.filter((file) => file !== name));
-                }} />
+            <div>
+              <label className={styles.field}>Study notes<textarea value={sampleNotes} readOnly tabIndex={-1} rows={4} /></label>
+              <Callout>Paste your own notes to turn them into flashcards.</Callout>
+            </div>
+            <div className={styles.files}>
+              <h3><Paperclip size={15} aria-hidden="true" /> Add files</h3>
+              {sampleFiles.map(({ name, format, icon: Icon }) => <div className={styles.file} key={name}>
                 <Icon size={17} aria-hidden="true" />
                 <span>{name}</span><small>{format}</small>
-              </label>)}
-            </fieldset>
+              </div>)}
+              <Callout>Upload PDFs, Word documents, and images as study material.</Callout>
+            </div>
           </section>
           <section className={styles.options} aria-label="Demo deck settings">
             <h3><Layers size={18} aria-hidden="true" /> Deck settings</h3>
-            <label className={styles.field}>Difficulty
-              <select value={difficulty} onChange={(event) => setDifficulty(event.target.value as Difficulty)}>
-                {Object.entries(difficultyLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-              </select>
-            </label>
-            <label className={styles.field}>Deck size
-              <select value={count} onChange={(event) => setCount(Number(event.target.value))}>
-                {[3, 5, 8].map((size) => <option key={size} value={size}>{size} cards</option>)}
-              </select>
-            </label>
-            <p>The demo uses prepared cards about meeting agendas. The full app generates cards from your own material.</p>
+            <div>
+              <label className={styles.field}>Difficulty<input value={difficultyLabels[sampleDifficulty]} readOnly tabIndex={-1} /></label>
+              <Callout>Choose how complex your questions and answers should be.</Callout>
+            </div>
+            <div>
+              <label className={styles.field}>Deck size<input value={`${sampleDeck.flashcards.length} cards`} readOnly tabIndex={-1} /></label>
+              <Callout>Generate up to 100 flashcards in a deck.</Callout>
+            </div>
           </section>
         </div>
-        {material && <p className="form-error" role="alert">{material}</p>}
-        <div><button type="submit" className="primary-button"><Sparkles size={16} aria-hidden="true" /> Generate sample deck</button></div>
-      </form>}
-      {step === 1 && deck && <div className={styles.stageStack}>
+      </div>}
+      {step === 1 && <div className={styles.stageStack}>
         <h2 ref={stageHeading} tabIndex={-1}>{deck.title}</h2>
         <p>Flip a card, rate your recall, or try fullscreen. Open Keyboard shortcuts for the study controls.</p>
-        <FlashcardStudy deck={deck} initialSession={session} onSessionChange={setSession} advance={advance} animate={animate} exportEnabled={false} />
+        <FlashcardStudy deck={deck} initialSession={session} onSessionChange={setSession} preferences={{ advance, animate }} exportEnabled={false} />
       </div>}
-      {step === 2 && deck && <div className={styles.stageStack}>
+      {step === 2 && <div className={styles.stageStack}>
         <h2 ref={stageHeading} tabIndex={-1}>Organize your decks</h2>
         <p>Try saving the sample, renaming it, and moving it into a folder.</p>
         <div className={styles.library}>
           <div className={styles.options}>
             <h3><Folder size={18} aria-hidden="true" /> Folders</h3>
-            {folder ? <p>{folder}</p> : <form className={styles.stack} onSubmit={(event) => {
+            <button className="secondary-button" type="button" aria-pressed={!folderView} onClick={() => setFolderView(false)}><Layers size={16} aria-hidden="true" /> All decks</button>
+            {folder ? <button className={`secondary-button ${styles.folderButton}`} type="button" aria-pressed={folderView}
+              onClick={() => setFolderView(true)}><Folder size={16} aria-hidden="true" /><span>{folder}</span><small>{saved && inFolder ? 1 : 0}</small></button> : <form className={styles.stack} onSubmit={(event) => {
               event.preventDefault();
-              setFolder(String(new FormData(event.currentTarget).get("folder") ?? "").trim());
+              const name = String(new FormData(event.currentTarget).get("folder") ?? "").trim();
+              if (!name) { setFolderError("Enter a folder name."); return; }
+              setFolder(name);
+              setFolderError("");
             }}>
               <label className={styles.field}>Folder name<input name="folder" required maxLength={60} defaultValue="Work skills" /></label>
+              {folderError && <p className="form-error" role="alert">{folderError}</p>}
               <button type="submit" className="secondary-button">Create sample folder</button>
             </form>}
           </div>
           <div className={styles.options}>
-            <h3><BookOpen size={18} aria-hidden="true" /> Sample deck</h3>
-            <p>{deck.flashcards.length} cards{saved ? ` · ${inFolder ? folder : "Unfiled"}` : ""}</p>
-            {saved ? <>
+            <h3><BookOpen size={18} aria-hidden="true" /> {folderView ? folder : "Sample deck"}</h3>
+            {folderView && (!saved || !inFolder) ? <p>This folder is empty. Move the sample deck here from All decks.</p> : <>
+              <p className={styles.sampleTitle}>{deck.title || sampleTopic}</p>
+              <div className={styles.deckMeta}><span>{deck.flashcards.length} cards</span>
+                {saved && <span><Folder size={14} aria-hidden="true" /> {inFolder ? folder : "Unfiled"}</span>}</div>
+              {saved ? <>
               <label className={styles.field}>Deck name<input value={deck.title} maxLength={100}
                 onChange={(event) => setDeck({ ...deck, title: event.target.value })} onBlur={() => {
-                  if (!deck.title.trim()) setDeck({ ...deck, title: sampleTopic });
+                  setDeck({ ...deck, title: deck.title.trim() || sampleTopic });
                 }} /></label>
-              <label className={styles.field}>Move to folder
-                <select value={inFolder ? "folder" : "unfiled"} onChange={(event) => setInFolder(event.target.value === "folder")}>
-                  <option value="unfiled">Unfiled</option>
-                  {folder && <option value="folder">{folder}</option>}
-                </select>
-              </label>
+              {folder && <div className={styles.field}><AccentSelect label="Move to folder" value={inFolder ? "folder" : "unfiled"}
+                options={[{ value: "unfiled", label: "Unfiled" }, { value: "folder", label: folder }]}
+                onChange={(value) => setInFolder(value === "folder")} /></div>}
               <button type="button" className="text-button" onClick={() => { setSaved(false); setInFolder(false); }}>Remove from demo library</button>
-            </> : <button type="button" className="secondary-button" onClick={() => setSaved(true)}>Save sample deck</button>}
+              </> : <button type="button" className="secondary-button" onClick={() => setSaved(true)}>Save sample deck</button>}
+            </>}
           </div>
         </div>
-        <p className="sr-only" role="status">{saved ? "Sample deck saved in this demo." : ""}</p>
+        <p className="sr-only" role="status">{saved ? `Sample deck saved in ${inFolder ? folder : "Unfiled"}.` : ""}</p>
       </div>}
       {step === 3 && <div className={styles.stageStack}>
         <h2 ref={stageHeading} tabIndex={-1}>Make it yours</h2>
         <p>Try your appearance and study preferences here, then go back to see how automatic advance feels.</p>
         <div className={styles.personalize}>
-          <section className={`demo-appearance ${styles.options}`} data-theme={theme} data-accent={accent} aria-label="Demo appearance">
+          <section className={styles.options} aria-label="Demo appearance">
             <AppearanceChoices theme={theme} accent={accent} onTheme={setTheme} onAccent={setAccent} />
             <p className={styles.accentPreview}><Check size={16} aria-hidden="true" /> Study preview</p>
           </section>
@@ -180,9 +174,10 @@ export function Demo() {
       </div>}
     </div>
     <div className={styles.navigation}>
-      {step > 0 && <button type="button" className="secondary-button" onClick={() => { setStep(skipFrom ?? step - 1); setSkipFrom(null); }}><ArrowLeft size={16} aria-hidden="true" /> Back</button>}
-      {step < lastStep && <button type="button" className="text-button" onClick={() => { setSkipFrom(step); setStep(lastStep); }}>Skip demo</button>}
-      {step > 0 && step < lastStep && <button type="button" className="primary-button" onClick={() => setStep(step + 1)}>Next <ArrowRight size={16} aria-hidden="true" /></button>}
+      {step > 0 && <button type="button" className="secondary-button" onClick={() => setStep(step - 1)}><ArrowLeft size={16} aria-hidden="true" /> Previous</button>}
+      {step < lastStep && <button type="button" className="primary-button" onClick={() => setStep(step + 1)}>
+        {step === 0 ? "Generate sample deck" : "Next"}{step === 0 ? <Sparkles size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}
+      </button>}
     </div>
   </section>;
 }

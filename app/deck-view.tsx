@@ -4,14 +4,17 @@ import {
   Check, ChevronLeft, ChevronRight, Clipboard, Copy, Download, GalleryVerticalEnd, List, Maximize, Minimize, RotateCcw, Shuffle,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { useStudyPreferences } from "../lib/browser-settings";
+import { defaultStudyPreferences, useStudyPreferences, type StudyPreferences } from "../lib/browser-settings";
+import { useCloudAccount } from "../lib/cloud-account";
 import { useDeckScope } from "../lib/use-deck-library";
 import { deckToCsv, difficultyLabels, type Deck } from "../lib/flashcards";
 import {
-  createStudySession, rateCard, reviewMissedCards, shuffleStudySession, type CardRating, type StudySession,
+  createStudySession, rateStudyCard, reviewMissedCards, shuffleStudySession, type CardRating, type StudySession,
 } from "../lib/study-session";
+import { playRatingSound } from "../lib/study-audio";
+import { shortcutFromEvent, studyActionIds, type StudyAction } from "../lib/study-shortcuts";
 import { DeckDialog } from "./components/deck-dialog";
-import { StudyShortcuts } from "./components/study-shortcuts";
+import { ShortcutKey, StudyShortcuts } from "./components/study-shortcuts";
 import fields from "./components/deck-dialog.module.css";
 import styles from "./deck-view.module.css";
 
@@ -19,19 +22,36 @@ type DeckViewProps = {
   deck: Deck;
   initialSession?: StudySession | null;
   onSessionChange?: (session: StudySession) => void;
+  identity?: React.ReactNode;
 };
 
-export function DeckView({ deck, initialSession, onSessionChange }: DeckViewProps) {
-  const { advance, animate } = useStudyPreferences(useDeckScope());
-  return <FlashcardStudy deck={deck} initialSession={initialSession} onSessionChange={onSessionChange}
-    advance={advance} animate={animate} />;
+export function DeckView(props: DeckViewProps) {
+  const scope = useDeckScope();
+  const preferences = useStudyPreferences(scope);
+  const { ready, profileReady } = useCloudAccount();
+  if (!ready || !profileReady) return <p role="status">Loading study preferences…</p>;
+  return <FlashcardStudy key={scope} {...props} preferences={preferences} />;
 }
 
-export function FlashcardStudy({ deck, initialSession, onSessionChange, advance = false, animate = true, exportEnabled = true }:
-  DeckViewProps & { advance?: boolean; animate?: boolean; exportEnabled?: boolean }) {
+function startSession(count: number, shuffle: boolean) {
+  const session = createStudySession(count);
+  return shuffle ? shuffleStudySession(session) : session;
+}
+
+type SessionOptions = Pick<StudyPreferences, "advance" | "animate" | "confirmRestart" | "shuffleOnStart" |
+  "startingSide" | "showHints" | "sounds" | "volume" | "shortcuts">;
+
+export function FlashcardStudy({ deck, identity, initialSession, onSessionChange, preferences, exportEnabled = true }:
+  DeckViewProps & { preferences?: Partial<SessionOptions>; exportEnabled?: boolean }) {
+  const { advance, animate, confirmRestart: confirmOnRestart, shuffleOnStart, startingSide, showHints, sounds, volume, shortcuts } = {
+    ...defaultStudyPreferences, ...preferences,
+  };
+  const startsRevealed = startingSide === "answer";
   const [view, setView] = useState<"study" | "list">("study");
-  const [revealed, setRevealed] = useState(false);
-  const [session, setSession] = useState(() => initialSession ?? createStudySession(deck.flashcards.length));
+  const [flipped, setFlipped] = useState(false);
+  const revealed = startsRevealed !== flipped;
+  const [answers, setAnswers] = useState<Set<number>>(() => new Set());
+  const [session, setSession] = useState(() => initialSession ?? startSession(deck.flashcards.length, shuffleOnStart));
   const [notice, setNotice] = useState("");
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -41,6 +61,7 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
   const summaryHeading = useRef<HTMLHeadingElement>(null);
   const cardContentId = useId();
   const progressId = useId();
+  const lastRating = useRef(-Infinity);
   const cardCount = deck.flashcards.length;
   const { order, position, ratings, complete } = session;
   const count = order.length;
@@ -65,7 +86,7 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
   function move(step: number) {
     const next = position + step;
     if (next < 0 || next >= count) return;
-    setRevealed(false);
+    setFlipped(false);
     commit({ ...session, position: next });
   }
 
@@ -82,39 +103,37 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
   function handleStudyKey(event: KeyboardEvent<HTMLElement>) {
     const target = event.target;
     if (!(target instanceof HTMLElement) || event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey ||
-        event.metaKey || event.altKey || event.shiftKey || target.closest("input, textarea, select, [contenteditable]")) return;
+        target.closest("input, textarea, select, [contenteditable], [role=combobox], [role=listbox]")) return;
     const dialog = target.closest("dialog");
     if (dialog && dialog !== fullDialog.current) return;
-    const key = event.key.toLowerCase();
-    if (key === " " && target.closest("a, button, summary") && !target.closest(".flashcard")) return;
-    if (event.repeat && key !== "arrowleft" && key !== "arrowright") return;
-    const studyActions: Record<string, () => void> = {
-      arrowleft: () => move(-1), arrowright: () => move(1), " ": flipCard,
-      arrowup: () => changeRating("known"), arrowdown: () => changeRating("review"),
-      ...(exportEnabled ? { c: () => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard.") } : {}),
+    const key = shortcutFromEvent(event.nativeEvent);
+    if (key === "Space" && target.closest("a, button, summary") && !target.closest(".flashcard")) return;
+    const action = studyActionIds.find((id) => shortcuts[id] === key);
+    if (!action || (action === "copy" && !exportEnabled)) return;
+    if ((view !== "study" || complete) && !["fullscreen", "shuffle", "restart"].includes(action)) return;
+    const handlers: Record<StudyAction, () => void> = {
+      previous: () => move(-1), next: () => move(1), flip: flipCard,
+      known: () => changeRating("known", event.timeStamp), review: () => changeRating("review", event.timeStamp),
+      copy: () => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard."),
+      fullscreen: toggleFullscreen, shuffle, restart: requestRestart,
     };
-    const shortcuts: Record<string, () => void> = {
-      f: toggleFullscreen, s: shuffle, r: () => setConfirmRestart(true),
-    };
-    const action = shortcuts[key] ?? (view === "study" && !complete ? studyActions[key] : undefined);
-    if (!action) return;
     event.preventDefault();
-    action();
+    if (!event.repeat || action === "previous" || action === "next") handlers[action]();
   }
 
   function flipCard() {
-    setRevealed(!revealed);
+    setFlipped(!flipped);
     if (!revealed) onSessionChange?.(session);
   }
 
-  function changeRating(rating: CardRating) {
-    const next = rateCard(session, rating);
+  function changeRating(rating: CardRating, now: number) {
+    if (advance && now - lastRating.current < 350) return;
+    lastRating.current = now;
+    const next = rateStudyCard(session, rating, advance);
     const selected = next.ratings[index];
     setNotice(selected ? (selected === "known" ? "Marked known." : "Marked for review.") : "Rating cleared.");
-    if (advance && selected && !next.complete && position < count - 1) {
-      next.position++;
-      setRevealed(false);
-    }
+    if (selected && sounds) void playRatingSound(selected, volume);
+    if (next.position !== position) setFlipped(false);
     commit(next);
     if (next.complete) requestAnimationFrame(() => summaryHeading.current?.focus());
   }
@@ -122,18 +141,30 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
   function shuffle() {
     if (count < 2) return;
     setView("study");
-    setRevealed(false);
+    setFlipped(false);
     commit(shuffleStudySession(session));
     setNotice("Cards shuffled.");
   }
 
   function restart() {
     setView("study");
-    setRevealed(false);
-    commit(createStudySession(cardCount));
+    setFlipped(false);
+    lastRating.current = -Infinity;
+    commit(startSession(cardCount, shuffleOnStart));
     setConfirmRestart(false);
     setNotice("Study session restarted.");
   }
+
+  function requestRestart() {
+    if (confirmOnRestart) setConfirmRestart(true);
+    else restart();
+  }
+
+  function hint(action: StudyAction) {
+    return showHints && <ShortcutKey binding={shortcuts[action]} hint />;
+  }
+
+  const allAnswers = answers.size === cardCount;
 
   async function copyText(text: string, message: string) {
     setNotice("");
@@ -177,9 +208,14 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
           </button>
         </div>
         <div className={styles.tools} role="group" aria-label="Study tools">
-          <StudyShortcuts iconOnly exportEnabled={exportEnabled} />
-          {!fullscreen && <button ref={enterButton} className="icon-button" type="button" aria-label="Enter Fullscreen" title="Enter Fullscreen" onClick={toggleFullscreen}>
-            <Maximize size={17} aria-hidden="true" />
+          {view === "list" && <button className="secondary-button" type="button" onClick={() =>
+            setAnswers(allAnswers ? new Set() : new Set(deck.flashcards.map((_, index) => index)))}>
+            <RotateCcw size={15} aria-hidden="true" /> {allAnswers ? "Show questions" : "Show answers"}
+          </button>}
+          <StudyShortcuts bindings={shortcuts} exportEnabled={exportEnabled} />
+          {!fullscreen && <button ref={enterButton} className="icon-button" type="button" aria-label="Enter Fullscreen"
+            title="Enter Fullscreen" aria-keyshortcuts={shortcuts.fullscreen} onClick={toggleFullscreen}>
+            <Maximize size={17} aria-hidden="true" />{hint("fullscreen")}
           </button>}
           {!fullscreen && exportEnabled && <button className="icon-button" type="button" aria-label="Copy deck" title="Copy deck" onClick={copyDeck}>
             <Clipboard size={17} aria-hidden="true" />
@@ -198,10 +234,11 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
             <p>{known} known · {needsReview} to review</p>
             <div>
               {needsReview > 0 && <button type="button" className="primary-button" onClick={() => {
-                setRevealed(false);
+                setFlipped(false);
+                lastRating.current = -Infinity;
                 commit(reviewMissedCards(session));
               }}>Review missed cards</button>}
-              <button type="button" className="secondary-button" onClick={() => setConfirmRestart(true)}>Restart session</button>
+              <button type="button" className="secondary-button" aria-keyshortcuts={shortcuts.restart} onClick={requestRestart}>Restart session{hint("restart")}</button>
             </div>
           </div>
         ) : (
@@ -210,7 +247,7 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
               className={`flashcard${revealed ? " flashcard-revealed" : ""}`}
               type="button"
               onClick={flipCard}
-              aria-keyshortcuts={`Space ArrowLeft ArrowRight ArrowUp ArrowDown${exportEnabled ? " C" : ""} F S R`}
+              aria-keyshortcuts={shortcuts.flip}
               aria-label={revealed ? "Show question" : "Reveal answer"}
               aria-describedby={cardContentId}
             >
@@ -221,31 +258,31 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
               <span id={cardContentId} className="card-text" aria-live="polite">
                 <span key={`${index}:${revealed}`} className={styles.cardFace}>{revealed ? card.back : card.front}</span>
               </span>
-              <span className="card-hint"><RotateCcw size={14} aria-hidden="true" /> {revealed ? "Show question" : "Reveal answer"}</span>
+              <span className="card-hint"><RotateCcw size={14} aria-hidden="true" /> {revealed ? "Show question" : "Reveal answer"}{hint("flip")}</span>
             </button>
             <div className={`study-actions ${styles.studyActions}`}>
               <div className="card-navigation">
-                <button type="button" className="icon-button" aria-label="Previous card" onClick={() => move(-1)} disabled={position === 0}>
-                  <ChevronLeft size={20} aria-hidden="true" />
+                <button type="button" className="icon-button" aria-label="Previous card" aria-keyshortcuts={shortcuts.previous} onClick={() => move(-1)} disabled={position === 0}>
+                  <ChevronLeft size={20} aria-hidden="true" />{hint("previous")}
                 </button>
                 <span className="card-position" role="status">{position + 1} / {count}</span>
-                <button type="button" className="icon-button" aria-label="Next card" onClick={() => move(1)} disabled={position === count - 1}>
-                  <ChevronRight size={20} aria-hidden="true" />
+                <button type="button" className="icon-button" aria-label="Next card" aria-keyshortcuts={shortcuts.next} onClick={() => move(1)} disabled={position === count - 1}>
+                  <ChevronRight size={20} aria-hidden="true" />{hint("next")}
                 </button>
-                <button className="icon-button" type="button" aria-label="Shuffle cards" title="Shuffle cards" onClick={shuffle} disabled={count < 2}>
-                  <Shuffle size={16} aria-hidden="true" />
+                <button className="icon-button" type="button" aria-label="Shuffle cards" title="Shuffle cards" aria-keyshortcuts={shortcuts.shuffle} onClick={shuffle} disabled={count < 2}>
+                  <Shuffle size={16} aria-hidden="true" />{hint("shuffle")}
                 </button>
                 {exportEnabled && <button className="icon-button" type="button" aria-label="Copy current flashcard" title="Copy current flashcard"
-                  onClick={() => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard.")}>
-                  <Copy size={16} aria-hidden="true" />
+                  aria-keyshortcuts={shortcuts.copy} onClick={() => void copyText(`Q: ${card.front}\nA: ${card.back}`, "Card copied to clipboard.")}>
+                  <Copy size={16} aria-hidden="true" />{hint("copy")}
                 </button>}
               </div>
               <div role="group" aria-label="Rate this card" className={styles.ratings}>
-                <button type="button" className={`secondary-button ${styles.reviewButton}`} aria-pressed={ratings[index] === "review"} onClick={() => changeRating("review")}>
-                  <RotateCcw size={15} aria-hidden="true" /> Needs review
+                <button type="button" className={`secondary-button ${styles.reviewButton}`} aria-pressed={ratings[index] === "review"} aria-keyshortcuts={shortcuts.review} onClick={(event) => changeRating("review", event.timeStamp)}>
+                  <RotateCcw size={15} aria-hidden="true" /> Needs review{hint("review")}
                 </button>
-                <button type="button" className="secondary-button learned-button" aria-pressed={ratings[index] === "known"} onClick={() => changeRating("known")}>
-                  <Check size={16} aria-hidden="true" /> Known
+                <button type="button" className="secondary-button learned-button" aria-pressed={ratings[index] === "known"} aria-keyshortcuts={shortcuts.known} onClick={(event) => changeRating("known", event.timeStamp)}>
+                  <Check size={16} aria-hidden="true" /> Known{hint("known")}
                 </button>
               </div>
             </div>
@@ -253,19 +290,25 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
         )
       ) : (
         <ul className="card-list">
-          {deck.flashcards.map(({ front, back, difficulty }, cardIndex) => (
-            <li key={cardIndex}>
-              <details>
-                <summary>
-                  <span className="list-number">{cardIndex + 1}</span>
-                  <span>{front}</span>
-                  {ratings[cardIndex] === "known" ? <Check size={16} aria-label="Known" />
-                    : ratings[cardIndex] === "review" && <RotateCcw size={15} aria-label="Needs review" />}
-                </summary>
-                <p>{back}<small className={styles.listDifficulty}>{difficultyLabels[difficulty]}</small></p>
-              </details>
-            </li>
-          ))}
+          {deck.flashcards.map(({ front, back, difficulty }, cardIndex) => {
+            const answer = answers.has(cardIndex);
+            return <li key={cardIndex}>
+              <button className={styles.listCard} type="button" aria-pressed={answer} onClick={() => setAnswers((previous) => {
+                const next = new Set(previous);
+                if (next.has(cardIndex)) next.delete(cardIndex);
+                else next.add(cardIndex);
+                return next;
+              })}>
+                <span className="list-number">{cardIndex + 1}</span>
+                <span key={String(answer)} className={styles.cardFace}>
+                  <span className={styles.listDifficulty}>{answer ? "Answer" : "Question"} · {difficultyLabels[difficulty]}</span>{answer ? back : front}
+                </span>
+                {ratings[cardIndex] === "known" ? <Check size={16} aria-label="Known" />
+                  : ratings[cardIndex] === "review" && <RotateCcw size={15} aria-label="Needs review" />}
+                <RotateCcw className={styles.listFlip} size={15} aria-hidden="true" />
+              </button>
+            </li>;
+          })}
         </ul>
       )}
 
@@ -273,7 +316,7 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
         <label htmlFor={progressId}>{known + needsReview} of {cardCount} rated</label>
         <progress id={progressId} max={cardCount} value={known + needsReview} />
         {!complete && (
-          <button type="button" className="text-button" onClick={() => setConfirmRestart(true)}>Restart</button>
+          <button type="button" className={`text-button ${styles.restart}`} aria-keyshortcuts={shortcuts.restart} onClick={requestRestart}>Restart{hint("restart")}</button>
         )}
       </div>
       <p role="status" className={notice ? "deck-notice" : "sr-only"}>{notice}</p>
@@ -294,9 +337,10 @@ export function FlashcardStudy({ deck, initialSession, onSessionChange, advance 
       onClose={(event) => { if (event.target === event.currentTarget) closeFullscreen(); }}>
       <div className={styles.fullscreenInner}>
         <header>
-          <h2 id={fullTitle}>{deck.title}</h2>
-          <button className="secondary-button" type="button" aria-label="Exit Fullscreen" onClick={toggleFullscreen}
-            onKeyDown={handleStudyKey}><Minimize size={17} aria-hidden="true" /> Exit fullscreen</button>
+          <h2 id={fullTitle}>{identity}{deck.title}</h2>
+          <button className="secondary-button" type="button" aria-label="Exit Fullscreen" aria-keyshortcuts={`${shortcuts.fullscreen} Escape`} onClick={toggleFullscreen}
+            onKeyDown={handleStudyKey}><Minimize size={17} aria-hidden="true" /> Exit fullscreen
+            {showHints && <ShortcutKey binding="Escape" hint />}{hint("fullscreen")}</button>
         </header>
         {content}
       </div>
